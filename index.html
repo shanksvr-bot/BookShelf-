@@ -10,71 +10,35 @@
 </head>
 <body>
 <div id="app">
-<header>
-  <div>
-    <div class="brand">BookShelf</div>
-    <div class="sub">Your personal book catalog</div>
-  </div>
-  <button id="settingsBtn" class="iconbtn" aria-label="Settings">⚙️</button>
-</header>
+<header><div><div class="brand">BookShelf</div><div class="sub">Your personal book catalog</div></div><button id="settingsBtn" class="iconbtn">⚙️</button></header>
 
 <main id="home" class="screen active">
-  <section class="hero">
-    <div class="heroIcon">📚</div>
-    <div><h1>My Library</h1><p><span id="bookCount">0</span> books in your collection</p></div>
-  </section>
-  <button id="scanHome" class="primary big">📷 Scan a Book</button>
-  <div class="stats">
-    <button data-filter="owned"><b id="ownedCount">0</b><span>Owned</span></button>
-    <button data-filter="want"><b id="wantCount">0</b><span>Want to Buy</span></button>
-    <button data-filter="read"><b id="readCount">0</b><span>Read</span></button>
-  </div>
-  <div class="sectionHead"><h2>Recent</h2><button id="seeAll">See all</button></div>
-  <div id="recent" class="bookgrid"></div>
+<section class="hero"><div class="heroIcon">📚</div><div><h1>My Library</h1><p><span id="bookCount">0</span> books in your collection</p></div></section>
+<button id="scanHome" class="primary big">📷 Scan a Book</button>
+<div class="stats"><button data-filter="owned"><b id="ownedCount">0</b><span>Owned</span></button><button data-filter="want"><b id="wantCount">0</b><span>Want to Buy</span></button><button data-filter="read"><b id="readCount">0</b><span>Read</span></button></div>
+<div class="sectionHead"><h2>Recent</h2><button id="seeAll">See all</button></div><div id="recent" class="bookgrid"></div>
 </main>
 
 <main id="library" class="screen">
-  <div class="pageHead"><h1>My Library</h1><button id="scanLib" class="smallPrimary">📷 Scan</button></div>
-  <div class="search"><span>🔎</span><input id="search" placeholder="Search title, author, ISBN..."></div>
-  <div class="chips">
-    <button class="chip active" data-filter="all">All</button>
-    <button class="chip" data-filter="owned">Owned</button>
-    <button class="chip" data-filter="want">Want to Buy</button>
-    <button class="chip" data-filter="read">Read</button>
-  </div>
-  <div id="libraryList" class="bookgrid"></div>
+<div class="pageHead"><h1>My Library</h1><button id="scanLib" class="smallPrimary">📷 Scan</button></div>
+<div class="search"><span>🔎</span><input id="search" placeholder="Search title, author, ISBN..."></div>
+<div class="chips"><button class="chip active" data-filter="all">All</button><button class="chip" data-filter="owned">Owned</button><button class="chip" data-filter="want">Want to Buy</button><button class="chip" data-filter="read">Read</button></div>
+<div id="libraryList" class="bookgrid"></div>
 </main>
 
-<main id="want" class="screen">
-  <div class="pageHead"><h1>Want to Buy</h1></div>
-  <div id="wantList" class="bookgrid"></div>
-</main>
+<main id="want" class="screen"><div class="pageHead"><h1>Want to Buy</h1></div><div id="wantList" class="bookgrid"></div></main>
 
 <main id="scan" class="screen">
-  <div class="pageHead"><button id="closeScan" class="back">‹</button><h1>Scan Book</h1><span></span></div>
-  <div class="scanner">
-    <video id="video" playsinline muted></video>
-    <div class="scanFrame"><span></span></div>
-    <div id="scanMsg">Point your camera at the ISBN barcode</div>
-  </div>
-  <div class="manual">
-    <p>Having trouble scanning?</p>
-    <div class="manualRow"><input id="manualIsbn" inputmode="numeric" placeholder="Enter ISBN manually"><button id="lookupManual" class="smallPrimary">Look up</button></div>
-  </div>
+<div class="pageHead"><button id="closeScan" class="back">‹</button><h1>Scan Book</h1><span></span></div>
+<div class="scanner"><video id="video" playsinline muted></video><div class="scanFrame"><span></span></div><div id="scanMsg">Starting camera scanner…</div></div>
+<div class="manual"><p>Having trouble scanning?</p><div class="manualRow"><input id="manualIsbn" inputmode="numeric" placeholder="Enter ISBN manually"><button id="lookupManual" class="smallPrimary">Look up</button></div></div>
 </main>
 
-<main id="details" class="screen">
-  <div class="pageHead"><button id="backDetails" class="back">‹</button><h1>Book Details</h1><span></span></div>
-  <div id="detailsContent"></div>
-</main>
+<main id="details" class="screen"><div class="pageHead"><button id="backDetails" class="back">‹</button><h1>Book Details</h1><span></span></div><div id="detailsContent"></div></main>
 
-<nav>
-  <button data-nav="home" class="active">🏠<span>Home</span></button>
-  <button data-nav="library">📚<span>Library</span></button>
-  <button data-nav="scan">📷<span>Scan</span></button>
-  <button data-nav="want">⭐<span>Want to Buy</span></button>
-</nav>
+<nav><button data-nav="home" class="active">🏠<span>Home</span></button><button data-nav="library">📚<span>Library</span></button><button data-nav="scan">📷<span>Scan</span></button><button data-nav="want">⭐<span>Want to Buy</span></button></nav>
 </div>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
