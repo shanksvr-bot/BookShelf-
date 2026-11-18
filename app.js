@@ -374,9 +374,20 @@ $('#scanHome').onclick=startCamera;$('#scanLib').onclick=startCamera;
 $('#shelfHome').onclick=()=>nav('shelf');$('#shelfLib').onclick=()=>nav('shelf');
 $('#closeScan').onclick=()=>nav('home');$('#closeShelf').onclick=()=>nav('home');
 $('#backDetails').onclick=()=>nav('library');$('#seeAll').onclick=()=>nav('library');
-$('#search').oninput=renderLibrary;$('#lookupManual').onclick=()=>lookup($('#manualIsbn').value);
-$('#chooseShelf').onclick=()=>$('#shelfFile').click();
-$('#shelfFile').onchange=e=>{if(e.target.files[0])shelfProcess(e.target.files[0])};
-$$('.chip').forEach(b=>b.onclick=()=>{$$('.chip').forEach(c=>c.classList.remove('active'));b.classList.add('active');currentFilter=b.dataset.filter;renderLibrary()});
+$('#search').oninput=renderLibrary;
+$('#lookupManual').onclick=()=>lookup($('#manualIsbn').value);
+
+$('#chooseShelf').onclick=()=>$('#shelfCamera').click();
+$('#uploadShelf').onclick=()=>$('#shelfFile').click();
+
+$('#shelfCamera').onchange=e=>{
+  if(e.target.files[0]) shelfProcess(e.target.files[0]);
+  e.target.value='';
+};
+
+$('#shelfFile').onchange=e=>{
+  if(e.target.files[0]) shelfProcess(e.target.files[0]);
+  e.target.value='';
+};$$('.chip').forEach(b=>b.onclick=()=>{$$('.chip').forEach(c=>c.classList.remove('active'));b.classList.add('active');currentFilter=b.dataset.filter;renderLibrary()});
 $$('.stats button').forEach(b=>b.onclick=()=>{currentFilter=b.dataset.filter;nav('library')});
 renderAll();
