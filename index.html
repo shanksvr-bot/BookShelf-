@@ -52,8 +52,14 @@
     <b>Photograph a shelf of books</b>
     <span>For best results, stand straight in front of the shelf, fill the frame with the book spines, and use good lighting.</span>
   </div>
-  <input id="shelfFile" type="file" accept="image/*" hidden>
-  <button id="chooseShelf" class="primary big">📷 Take Photo / Choose Photo</button>
+  <input id="shelfCamera" type="file" accept="image/*" capture="environment" hidden>
+
+<input id="shelfFile" type="file" accept="image/*" hidden>
+
+<div class="shelfButtons">
+  <button id="chooseShelf" class="primary big">📷 Take Photo</button>
+  <button id="uploadShelf" class="big">🖼️ Choose Existing Photo</button>
+</div>
   <div id="shelfWork" class="shelfWork hidden">
     <img id="shelfPreview" class="shelfPreview">
     <div id="shelfStatus" class="shelfStatus">Preparing image…</div>
