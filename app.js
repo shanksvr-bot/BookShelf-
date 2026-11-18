@@ -194,36 +194,151 @@ async function searchShelfText(raw){
   });
   return unique.slice(0,4).map(it=>gbToBook(it,raw));
 }
-async function shelfProcess(file){
-  $('#shelfWork').classList.remove('hidden');$('#shelfResults').innerHTML='';$('#ocrDebug').classList.add('hidden');shelfCandidates=[];
-  try{
-    const im=await imageFromFile(file),base=canvasFromImage(im,1500);$('#shelfPreview').src=base.toDataURL('image/jpeg',.85);
-    setShelfStatus('Preparing shelf image…',5);
-    shelfWorker=await Tesseract.createWorker('eng',1,{logger:m=>{if(m.status==='recognizing text'&&m.progress)setShelfStatus('Reading shelf text…',25+m.progress*35)}});
-    await shelfWorker.setParameters({tessedit_pageseg_mode:'11',preserve_interword_spaces:'1'});
-    const spines=await identifySpines(base);setShelfStatus(`Found ${spines.length} possible book regions. Matching titles…`,65);
-    let debug=[];
-    for(let i=0;i<spines.length;i++){
-      const s=spines[i];debug.push(`Region ${i+1}: ${s.raw}`);
-      const matches=await searchShelfText(s.raw);setShelfStatus(`Matching book ${i+1} of ${spines.length}…`,65+(i/spines.length)*30);
-      if(matches.length){
-        const best=matches[0],score=scoreText(s.raw,best.title+' '+best.author),existing=isDuplicate(best.isbn,best.title,best.author);
-        shelfCandidates.push({...best,raw:s.raw,score,existing,selected:!existing||existing.status==='Want to Buy'});
-      }else{
-        shelfCandidates.push({title:'Possible book match',author:'',isbn:'',cover:'',raw:s.raw,score:0,selected:false,needsSearch:true});
+
+async function shelfProcess(file) {
+  $('#shelfWork').classList.remove('hidden');
+  $('#shelfResults').innerHTML = '';
+  $('#ocrDebug').classList.add('hidden');
+  shelfCandidates = [];
+
+  try {
+    setShelfStatus('Preparing shelf photo…', 10);
+
+    const im = await imageFromFile(file);
+    const base = canvasFromImage(im, 1500);
+    const imageData = base.toDataURL('image/jpeg', 0.85);
+
+    $('#shelfPreview').src = imageData;
+
+    setShelfStatus('AI is examining your bookshelf…', 30);
+
+    const response = await fetch(
+      'https://bookshelf-ai.shanksvr.workers.dev',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          image: imageData,
+          mimeType: 'image/jpeg'
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        result.details || result.error || 'AI recognition failed'
+      );
+    }
+
+    if (!result.success || !Array.isArray(result.books)) {
+      throw new Error('Unexpected response from AI service.');
+    }
+
+    const books = result.books;
+    let debug = [];
+
+    setShelfStatus(
+      `AI identified ${books.length} possible books. Checking book database…`,
+      60
+    );
+
+    for (let i = 0; i < books.length; i++) {
+      const book = books[i];
+
+      const title = (book.title || '').trim();
+      const author = (book.author || '').trim();
+
+      if (!title) continue;
+
+      const raw = book.evidence ||
+        `${title}${author ? ' — ' + author : ''}`;
+
+      debug.push(
+        `Book ${i + 1}: ${title} — ${author} (AI confidence: ${book.confidence}%)`
+      );
+
+      setShelfStatus(
+        `Looking up ${i + 1} of ${books.length}: ${title}…`,
+        60 + ((i + 1) / Math.max(books.length, 1)) * 35
+      );
+
+      const matches = await searchShelfText(
+        `${title} ${author}`
+      );
+
+      if (matches.length) {
+        const best = matches[0];
+
+        const score = scoreText(
+          `${title} ${author}`,
+          `${best.title} ${best.author}`
+        );
+
+        const existing = isDuplicate(
+          best.isbn || book.isbn,
+          best.title,
+          best.author
+        );
+
+        shelfCandidates.push({
+          ...best,
+          raw,
+          score,
+          aiConfidence: book.confidence,
+          existing,
+          selected: !existing ||
+            existing.status === 'Want to Buy'
+        });
+
+      } else {
+        shelfCandidates.push({
+          title,
+          author,
+          isbn: book.isbn || '',
+          cover: '',
+          raw,
+          score: 0,
+          aiConfidence: book.confidence,
+          selected: false,
+          needsSearch: true
+        });
       }
     }
-    if(shelfWorker){await shelfWorker.terminate();shelfWorker=null}
-    setShelfStatus(`Done — ${shelfCandidates.length} book regions found.`,100);
-    $('#ocrDebug').innerHTML=`<div class="debugBox"><details><summary>Show OCR text used for matching</summary><div class="debugText">${esc(debug.join('\\n'))}</div></details></div>`;
+
+    setShelfStatus(
+      `Done — ${shelfCandidates.length} possible books identified.`,
+      100
+    );
+
+    $('#ocrDebug').innerHTML =
+      `<div class="debugBox">
+        <details>
+          <summary>Show AI recognition results</summary>
+          <div class="debugText">${esc(debug.join('\n'))}</div>
+        </details>
+      </div>`;
+
     $('#ocrDebug').classList.remove('hidden');
+
     renderShelfResults();
-  }catch(e){
-    console.error(e);setShelfStatus('Shelf scan could not complete.',0);
-    $('#shelfResults').innerHTML=`<div class="empty"><b>Could not scan this photo</b><span>Try a sharper photo with the book spines filling more of the frame.</span></div>`;
-    if(shelfWorker){try{await shelfWorker.terminate()}catch(x){}shelfWorker=null}
+
+  } catch (e) {
+    console.error(e);
+
+    setShelfStatus('Shelf scan could not complete.', 0);
+
+    $('#shelfResults').innerHTML =
+      `<div class="empty">
+        <b>Could not scan this photo</b>
+        <span>${esc(e.message || 'Please try again.')}</span>
+      </div>`;
   }
 }
+
 function renderShelfResults(){
   if(!shelfCandidates.length){$('#shelfResults').innerHTML=`<div class="empty"><b>No book regions detected</b><span>Try moving closer so the spines fill more of the photo.</span></div>`;return}
   let html=`<div class="shelfToolbar"><button onclick="selectAllShelf(true)">Select all</button><button onclick="selectAllShelf(false)">Clear all</button></div>`;
