@@ -1,9 +1,10 @@
 const KEY='bookshelf_books_v1';
 let books=JSON.parse(localStorage.getItem(KEY)||'[]');
-let currentFilter='all', scannerControls=null, zxingReader=null, scanLocked=false;
-let candidateISBN='', candidateHits=0, candidateSince=0, scanVideo=null;
+let currentFilter='all';
+let scannerControls=null,zxingReader=null,scanLocked=false,candidateISBN='',candidateHits=0,candidateSince=0,scanVideo=null;
+let shelfCandidates=[], shelfWorker=null;
 
-const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 function save(){localStorage.setItem(KEY,JSON.stringify(books))}
 function nav(id){
   $$('.screen').forEach(x=>x.classList.remove('active'));
@@ -14,10 +15,8 @@ function nav(id){
 }
 function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
 function counts(){
-  $('#bookCount').textContent=books.length;
-  $('#ownedCount').textContent=books.filter(b=>b.status==='Owned').length;
-  $('#wantCount').textContent=books.filter(b=>b.status==='Want to Buy').length;
-  $('#readCount').textContent=books.filter(b=>b.status==='Read').length;
+  let o=books.filter(b=>b.status==='Owned').length,w=books.filter(b=>b.status==='Want to Buy').length,r=books.filter(b=>b.status==='Read').length;
+  $('#bookCount').textContent=books.length;$('#ownedCount').textContent=o;$('#wantCount').textContent=w;$('#readCount').textContent=r;
 }
 function card(b){
   return `<article class="book" onclick="showDetails('${b.id}')">${b.cover?`<img class="cover" src="${esc(b.cover)}">`:`<div class="cover noCover">No cover image</div>`}<div class="bookInfo"><div class="bookTitle">${esc(b.title)}</div><div class="author">${esc(b.author||'Unknown author')}</div><span class="badge">${esc(b.status||'Owned')}</span></div></article>`;
@@ -30,7 +29,7 @@ function renderAll(){
   $('#wantList').innerHTML=books.filter(b=>b.status==='Want to Buy').map(card).join('')||`<div class="empty"><b>No books on your list</b><span>Scan a book and add it to Want to Buy.</span></div>`;
 }
 function renderLibrary(){
-  let q=($('#search')?.value||'').toLowerCase(), map={owned:'Owned',want:'Want to Buy',read:'Read'};
+  let q=($('#search')?.value||'').toLowerCase(),map={owned:'Owned',want:'Want to Buy',read:'Read'};
   let arr=books.filter(b=>currentFilter==='all'||b.status===map[currentFilter]).filter(b=>(b.title+' '+b.author+' '+b.isbn).toLowerCase().includes(q));
   $('#libraryList').innerHTML=arr.length?arr.map(card).join(''):`<div class="empty"><b>No matching books</b><span>Try another search or scan a book.</span></div>`;
 }
@@ -43,254 +42,226 @@ function saveDetails(id){let b=books.find(x=>x.id===id);b.store=$('#storeField')
 function cycleStatus(id){let b=books.find(x=>x.id===id),s=['Owned','Want to Buy','Reading','Read'];b.status=s[(s.indexOf(b.status)+1)%s.length];save();showDetails(id)}
 function removeBook(id){if(confirm('Remove this book from your library?')){books=books.filter(x=>x.id!==id);save();nav('library')}}
 function cleanISBN(v){return String(v||'').replace(/[^0-9Xx]/g,'').toUpperCase()}
-function isbn13From10(isbn){let s=cleanISBN(isbn);if(s.length!==10)return s;let base='978'+s.slice(0,9),sum=0;for(let i=0;i<12;i++)sum+=Number(base[i])*(i%2?3:1);return base+(10-(sum%10))%10}
-function isbnCandidates(isbn){let s=cleanISBN(isbn),a=[s];if(s.length===10)a.push(isbn13From10(s));if(s.length===13&&s.startsWith('978')){let b=s.slice(3,12),sum=0;for(let i=0;i<9;i++)sum+=Number(b[i])*(i%2?3:1);a.push(b+(10-(sum%10))%10)}return [...new Set(a)]}
-function existingByISBN(isbn){let cs=isbnCandidates(isbn);return books.find(b=>cs.includes(cleanISBN(b.isbn))||cs.some(x=>isbnCandidates(b.isbn).includes(x)))}
-async function fetchJSON(url){let r=await fetch(url);if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}
-async function lookupBookData(isbn){
-  let cs=isbnCandidates(isbn), best=null;
-  for(const x of cs){
-    try{
-      let g=await fetchJSON('https://www.googleapis.com/books/v1/volumes?q=isbn:'+encodeURIComponent(x));
-      let item=g.items?.[0];if(item){
-        let v=item.volumeInfo||{}, title=v.title||'Unknown title', authors=(v.authors||[]).join(', ');
-        best={isbn:x,title,author:authors,cover:v.imageLinks?.thumbnail?.replace('http:','https:')||'',publisher:v.publisher||'',year:v.publishedDate||'',description:v.description||''};
-        break;
-      }
-    }catch(e){}
-  }
-  if(best)return best;
-  for(const x of cs){
-    try{
-      let d=await fetchJSON('https://openlibrary.org/isbn/'+encodeURIComponent(x)+'.json');
-      let desc='',works=d.works?.[0]?.key;if(works)try{let wd=await fetchJSON('https://openlibrary.org'+works+'.json');desc=typeof wd.description==='string'?wd.description:(wd.description?.value||'')}catch(e){}
-      return {isbn:x,title:d.title||'Unknown title',author:(d.authors||[]).map(a=>a.name||'').filter(Boolean).join(', '),cover:`https://covers.openlibrary.org/b/isbn/${x}-L.jpg`,publisher:(d.publishers||[])[0]||'',year:d.publish_date||'',description:desc};
-    }catch(e){}
-  }
-  throw new Error('Book not found');
+function isbn10to13(isbn){isbn=cleanISBN(isbn);if(isbn.length!==10)return isbn;return '978'+isbn.slice(0,9)}
+function isbn13Check(s){let sum=0;for(let i=0;i<12;i++)sum+=Number(s[i])*(i%2?3:1);return String((10-(sum%10))%10)===s[12]}
+function normalizeISBN(isbn){
+  isbn=cleanISBN(isbn);
+  if(isbn.length===10){let base=isbn10to13(isbn);if(/^\d{13}$/.test(base))return base}
+  return isbn
 }
-function showAddChoice(data,source='ISBN'){
-  $('#scanMsg').textContent=`Found: ${data.title}`;
-  let old=$('#addChoice');if(old)old.remove();
-  let wrap=document.createElement('div');wrap.id='addChoice';wrap.className='manual';wrap.innerHTML=`<p><b>${esc(data.title)}</b><br>${esc(data.author||'Unknown author')}</p><div class="manualRow"><button class="smallPrimary" id="ownItBtn">Own It</button><button class="small" id="wantItBtn">Want to Buy</button></div>`;
-  $('#scan').appendChild(wrap);
-  $('#ownItBtn').onclick=()=>addBook(data,'Owned');
-  $('#wantItBtn').onclick=()=>addBook(data,'Want to Buy');
+function isDuplicate(isbn,title,author){
+  const ni=normalizeISBN(isbn);
+  return books.find(b=>{
+    const bi=normalizeISBN(b.isbn);
+    if(ni && /^\d{13}$/.test(ni) && bi===ni)return b;
+    return title&&author&&b.title&&b.author&&b.title.toLowerCase().trim()===title.toLowerCase().trim()&&b.author.toLowerCase().trim()===author.toLowerCase().trim();
+  });
 }
-function addBook(data,status){
-  let ex=existingByISBN(data.isbn);if(ex){alert(ex.status==='Owned'?'Already in your library.':'This book is already on your Want to Buy list.');showDetails(ex.id);return}
-  let b={id:crypto.randomUUID(),isbn:data.isbn,title:data.title||'Unknown title',author:data.author||'Unknown author',cover:data.cover||'',publisher:data.publisher||'',year:data.year||'',description:data.description||'',status,added:Date.now(),store:'',price:'',notes:''};
-  books.unshift(b);save();let c=$('#addChoice');if(c)c.remove();stopCamera();showDetails(b.id);
+async function googleBooks(q){
+  const url='https://www.googleapis.com/books/v1/volumes?maxResults=8&q='+encodeURIComponent(q);
+  const r=await fetch(url);if(!r.ok)throw new Error('Google Books unavailable');const d=await r.json();return d.items||[];
 }
-async function lookup(isbn){
+function gbToBook(item,ocr=''){
+  const v=item.volumeInfo||{},ids=v.industryIdentifiers||[],isbn=(ids.find(x=>x.type==='ISBN_13')||ids.find(x=>x.type==='ISBN_10')||{}).identifier||'';
+  return {isbn:normalizeISBN(isbn),title:v.title||'',author:(v.authors||[]).join(', '),cover:v.imageLinks?.thumbnail||v.imageLinks?.smallThumbnail||'',publisher:v.publisher||'',year:v.publishedDate||'',description:v.description||'',ocr};
+}
+async function lookup(isbn,statusChoice='Owned'){
   isbn=cleanISBN(isbn);if(isbn.length!==10&&isbn.length!==13){alert('Please enter a valid ISBN-10 or ISBN-13.');return}
-  let existing=existingByISBN(isbn);if(existing){await stopCamera();showDetails(existing.id);alert(existing.status==='Owned'?'You already have this book in your library.':'This book is already on your Want to Buy list.');return}
+  let normalized=normalizeISBN(isbn),existing=isDuplicate(normalized,'','');
+  if(existing){await stopCamera();showDetails(existing.id);alert(existing.status==='Owned'?'You already have this book in your library.':'This book is already on your Want to Buy list.');return}
   $('#scanMsg').textContent='ISBN confirmed — looking up book…';
-  try{let data=await lookupBookData(isbn);showAddChoice(data)}catch(e){$('#scanMsg').textContent='Book not found. Try another edition or enter the ISBN manually.';alert('I could not find that ISBN in Google Books or Open Library.')}
+  try{
+    let item=(await googleBooks('isbn:'+normalized))[0];
+    if(!item){
+      let r=await fetch('https://openlibrary.org/isbn/'+encodeURIComponent(isbn)+'.json');
+      if(!r.ok)throw new Error('Book not found');
+      let d=await r.json(),desc='',works=d.works?.[0]?.key;
+      if(works)try{let wd=await(await fetch('https://openlibrary.org'+works+'.json')).json();desc=typeof wd.description==='string'?wd.description:(wd.description?.value||'')}catch(e){}
+      let b={id:crypto.randomUUID(),isbn:normalized,title:d.title||'Unknown title',author:(d.authors||[]).map(a=>a.name||'').filter(Boolean).join(', '),cover:`https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg`,publisher:(d.publishers||[])[0]||'',year:d.publish_date||'',description:desc,status:statusChoice,added:Date.now(),store:'',price:'',notes:''};
+      books.unshift(b);save();await stopCamera();showDetails(b.id);return;
+    }
+    let b=gbToBook(item);b.id=crypto.randomUUID();b.status=statusChoice;b.added=Date.now();b.store='';b.price='';b.notes='';
+    books.unshift(b);save();await stopCamera();showDetails(b.id);
+  }catch(e){$('#scanMsg').textContent='Book not found. Try another angle or enter the ISBN manually.';alert('I could not find that ISBN. Try the manual ISBN field or another edition.')}
 }
 function resetCandidate(){candidateISBN='';candidateHits=0;candidateSince=0}
 async function startCamera(){
   await stopCamera();nav('scan');scanLocked=false;resetCandidate();$('#scanMsg').textContent='Starting camera…';
   const oldVideo=$('#video');if(!oldVideo)return;oldVideo.style.display='none';const parent=oldVideo.parentElement;let prior=$('#zxing-video');if(prior)prior.remove();
-  scanVideo=document.createElement('video');scanVideo.id='zxing-video';scanVideo.setAttribute('playsinline','true');scanVideo.setAttribute('autoplay','true');scanVideo.muted=true;scanVideo.style.cssText='display:block;width:100%;height:100%;min-height:260px;object-fit:cover;border-radius:12px;background:#111';parent.appendChild(scanVideo);
+  scanVideo=document.createElement('video');scanVideo.id='zxing-video';scanVideo.setAttribute('playsinline','true');scanVideo.setAttribute('autoplay','true');scanVideo.muted=true;
+  scanVideo.style.cssText='display:block;width:100%;height:100%;min-height:260px;object-fit:cover;border-radius:12px;background:#111';parent.appendChild(scanVideo);
   try{
+    $('#scanMsg').textContent='Loading barcode reader…';
     const browserMod=await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm'),libMod=await import('https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/+esm');
     const hints=new Map();hints.set(libMod.DecodeHintType.POSSIBLE_FORMATS,[libMod.BarcodeFormat.EAN_13,libMod.BarcodeFormat.EAN_8]);hints.set(libMod.DecodeHintType.TRY_HARDER,true);
     zxingReader=new browserMod.BrowserMultiFormatReader(hints,120);
-    scannerControls=await zxingReader.decodeFromConstraints({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30},focusMode:'continuous'}},scanVideo,(result,error)=>{
-      if(scanLocked||!result)return;let isbn=cleanISBN(result.getText());if(isbn.length!==13)return;let now=Date.now();
+    const constraints={audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30},focusMode:'continuous'}};
+    scannerControls=await zxingReader.decodeFromConstraints(constraints,scanVideo,(result,error)=>{
+      if(scanLocked||!result)return;const raw=result.getText(),isbn=cleanISBN(raw);if(isbn.length!==13)return;const now=Date.now();
       if(isbn===candidateISBN&&now-candidateSince<2200)candidateHits++;else{candidateISBN=isbn;candidateHits=1;candidateSince=now}
       $('#scanMsg').textContent=`Barcode detected — confirming ISBN (${Math.min(candidateHits,2)}/2). Hold steady.`;
-      if(candidateHits>=2){scanLocked=true;lookup(isbn)}
+      if(candidateHits>=2){scanLocked=true;$('#scanMsg').textContent='ISBN confirmed. Looking up book…';lookup(isbn)}
     });
     $('#scanMsg').textContent='Center the whole barcode in the camera view. Hold steady; avoid glare and shadows.';
-  }catch(e){console.error(e);$('#scanMsg').textContent='Could not start the scanner. Check Safari camera permission, then refresh.';if(scanVideo){scanVideo.remove();scanVideo=null}oldVideo.style.display=''}
+  }catch(e){console.error(e);$('#scanMsg').textContent='Could not start the scanner. Check Safari camera permission, then refresh. You can enter the ISBN manually below.';if(scanVideo){scanVideo.remove();scanVideo=null}oldVideo.style.display=''}
 }
 async function stopCamera(){
   if(scannerControls){try{scannerControls.stop()}catch(e){}scannerControls=null}
   if(zxingReader){try{zxingReader.reset()}catch(e){}zxingReader=null}
   if(scanVideo){try{scanVideo.pause();if(scanVideo.srcObject)scanVideo.srcObject.getTracks().forEach(t=>t.stop())}catch(e){}scanVideo.remove();scanVideo=null}
-  let v=$('#video');if(v){v.srcObject=null;v.style.display=''}resetCandidate();scanLocked=false
+  const oldVideo=$('#video');if(oldVideo){oldVideo.srcObject=null;oldVideo.style.display=''}
+  resetCandidate();scanLocked=false
 }
-function loadImageFromFile(file){
-  return new Promise((resolve,reject)=>{
-    const img=new Image();
-    img.onload=()=>resolve(img);
-    img.onerror=reject;
-    img.src=URL.createObjectURL(file);
-  });
+
+/* ---------- Shelf Scan v3 ---------- */
+function setShelfStatus(msg,pct){$('#shelfStatus').textContent=msg;$('#shelfProgress').style.width=(pct||0)+'%'}
+function imageFromFile(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);res(im)};im.onerror=rej;im.src=u})}
+function canvasFromImage(im,maxW=1500){
+  const scale=Math.min(1,maxW/im.naturalWidth),c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*scale);c.height=Math.round(im.naturalHeight*scale);c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c
 }
-function canvasCropRotate(img,sx,sy,sw,sh,angle=0,scale=1.7){
-  const rad=Math.abs(angle)*Math.PI/180;
-  const rw=Math.ceil((Math.abs(Math.cos(rad))*sw+Math.abs(Math.sin(rad))*sh)*scale);
-  const rh=Math.ceil((Math.abs(Math.sin(rad))*sw+Math.abs(Math.cos(rad))*sh)*scale);
-  const c=document.createElement('canvas');c.width=rw;c.height=rh;
-  const ctx=c.getContext('2d');
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,rw,rh);
-  ctx.save();ctx.translate(rw/2,rh/2);ctx.rotate(angle*Math.PI/180);ctx.scale(scale,scale);
-  ctx.drawImage(img,sx,sy,sw,sh,-sw/2,-sh/2,sw,sh);ctx.restore();
-  return c;
+function rotateCanvas(src,deg){
+  const c=document.createElement('canvas'),ctx=c.getContext('2d'),r=Math.abs(deg)%180===90;c.width=r?src.height:src.width;c.height=r?src.width:src.height;
+  ctx.translate(c.width/2,c.height/2);ctx.rotate(deg*Math.PI/180);ctx.drawImage(src,-src.width/2,-src.height/2);return c
 }
-async function ocrCanvas(canvas,label,status){
-  const {data:{text}}=await Tesseract.recognize(canvas,'eng',{
-    logger:m=>{
-      if(m.status==='recognizing text'){
-        status.textContent=`Reading ${label}… ${Math.round((m.progress||0)*100)}%`;
-      }
-    }
-  });
-  return text;
+async function ocrWords(c,rotation){
+  const rc=rotateCanvas(c,rotation);
+  const result=await shelfWorker.recognize(rc,{rotateAuto:true});
+  const words=(result.data.words||[]).filter(w=>w.text&&w.text.trim()&&w.confidence>=18);
+  return {rotation,canvas:rc,words,result};
 }
-function cleanOCRLine(line){
-  return line.replace(/[|_~`]+/g,' ')
-    .replace(/[^\p{L}\p{N}.'’&,:;!?()\- ]/gu,' ')
-    .replace(/\s+/g,' ').trim();
+function cleanOCR(s){return String(s||'').replace(/[^A-Za-z0-9À-ÿ'&:,\- ]/g,' ').replace(/\s+/g,' ').trim()}
+function scoreText(a,b){
+  a=cleanOCR(a).toLowerCase();b=cleanOCR(b).toLowerCase();if(!a||!b)return 0;
+  const at=new Set(a.split(/\s+/).filter(x=>x.length>2)),bt=new Set(b.split(/\s+/).filter(x=>x.length>2));let hit=0;at.forEach(x=>{if(bt.has(x))hit++});return hit/Math.max(1,Math.min(at.size,bt.size))
 }
-function usefulOCRLines(text){
-  return [...new Set(text.split(/\n+/).map(cleanOCRLine)
-    .filter(x=>x.length>=3)
-    .filter(x=>/[A-Za-z]/.test(x))
-    .filter(x=>!/^(page|copyright|www|http|isbn|library|publisher|press)$/i.test(x)))];
-}
-async function identifyShelfText(lines,status){
-  let candidates=[], seen=new Set();
-  for(let raw of lines.slice(0,30)){
-    let q=raw.replace(/\b(the|a|an)\b/gi,' ').replace(/\s+/g,' ').trim();
-    if(q.length<3)continue;
-    try{
-      let g=await fetchJSON('https://www.googleapis.com/books/v1/volumes?q='+encodeURIComponent(q)+'&maxResults=5');
-      let items=g.items||[];
-      // Prefer a title that shares several meaningful words with the OCR text.
-      let words=q.toLowerCase().split(/\s+/).filter(w=>w.length>2);
-      let scored=items.map(item=>{
-        let v=item.volumeInfo||{}, hay=((v.title||'')+' '+(v.subtitle||'')+' '+(v.authors||[]).join(' ')).toLowerCase();
-        let score=words.reduce((n,w)=>n+(hay.includes(w)?1:0),0);
-        return {item,score};
-      }).sort((a,b)=>b.score-a.score)[0];
-      if(scored?.item?.volumeInfo){
-        let v=scored.item.volumeInfo;
-        let isbn13=(v.industryIdentifiers||[]).find(i=>i.type==='ISBN_13')?.identifier||'';
-        let isbn10=(v.industryIdentifiers||[]).find(i=>i.type==='ISBN_10')?.identifier||'';
-        let key=cleanISBN(isbn13||isbn10)||((v.title||'')+'|'+(v.authors||[]).join(',')).toLowerCase();
-        if(!seen.has(key)){
-          seen.add(key);
-          candidates.push({
-            ocr:raw,isbn:isbn13||isbn10,title:v.title||raw,
-            author:(v.authors||[]).join(', '),
-            cover:v.imageLinks?.thumbnail?.replace('http:','https:')||'',
-            publisher:v.publisher||'',year:v.publishedDate||'',
-            description:v.description||'',matchScore:scored.score
-          });
-        }
-      }
-    }catch(e){}
+function clusterWords(words,canvas){
+  // Words are horizontal in the OCR canvas. Their x positions group text belonging to one spine.
+  let arr=words.map(w=>({x:(w.bbox.x0+w.bbox.x1)/2,y:(w.bbox.y0+w.bbox.y1)/2,w:w.bbox.x1-w.bbox.x0,h:w.bbox.y1-w.bbox.y0,text:cleanOCR(w.text),conf:w.confidence})).filter(x=>x.text.length>=2);
+  arr.sort((a,b)=>a.x-b.x);
+  const groups=[];const tolerance=Math.max(28,canvas.width*.035);
+  for(const item of arr){
+    let g=groups[groups.length-1];
+    if(!g||item.x-g.maxX>tolerance){groups.push({minX:item.x,maxX:item.x,items:[item]})}
+    else{g.items.push(item);g.maxX=Math.max(g.maxX,item.x)}
   }
-  return candidates.sort((a,b)=>b.matchScore-a.matchScore);
+  // Merge close groups and discard tiny/noisy clusters.
+  let merged=[];
+  for(const g of groups){
+    const width=g.maxX-g.minX;const count=g.items.length;
+    if(count>=2 || width>30){
+      const prev=merged[merged.length-1];
+      if(prev&&g.minX-prev.maxX<Math.max(35,canvas.width*.045)){prev.items.push(...g.items);prev.maxX=Math.max(prev.maxX,g.maxX)}
+      else merged.push({minX:g.minX,maxX:g.maxX,items:g.items})
+    }
+  }
+  return merged;
 }
-async function scanShelfFile(file){
-  if(!file)return;
-  const preview=$('#shelfPreview'),status=$('#shelfStatus'),results=$('#shelfResults');
-  results.innerHTML='';
-  preview.innerHTML='';
-  status.textContent='Preparing shelf photo…';
+function cropGroup(c,g){
+  const xs=g.items.map(x=>x.x),ys=g.items.map(x=>x.y);
+  const minX=Math.max(0,Math.floor(Math.min(...xs)-Math.max(45,c.width*.035))),maxX=Math.min(c.width,Math.ceil(Math.max(...xs)+Math.max(45,c.width*.035)));
+  const minY=Math.max(0,Math.floor(Math.min(...ys)-Math.max(55,c.height*.04))),maxY=Math.min(c.height,Math.ceil(Math.max(...ys)+Math.max(55,c.height*.04)));
+  const out=document.createElement('canvas');out.width=maxX-minX;out.height=maxY-minY;out.getContext('2d').drawImage(c,minX,minY,out.width,out.height,0,0,out.width,out.height);return out;
+}
+function combineCandidateText(items){return cleanOCR(items.map(x=>x.text).join(' '))}
+async function identifySpines(base){
+  const rotations=[0,90,-90];let clusters=[];
+  for(let i=0;i<rotations.length;i++){
+    setShelfStatus(`Reading shelf text (${i+1}/${rotations.length})…`,20+i*15);
+    const r=await ocrWords(base,rotations[i]);clusters.push({rotation:r.rotation,canvas:r.canvas,groups:clusterWords(r.words,r.canvas)});
+  }
+  // Prefer the rotation with the most useful groups.
+  clusters.sort((a,b)=>b.groups.length-a.groups.length);
+  const chosen=clusters[0];const results=[];
+  for(let i=0;i<Math.min(chosen.groups.length,20);i++){
+    const g=chosen.groups[i],raw=combineCandidateText(g.items);if(raw.length<3)continue;
+    const crop=cropGroup(chosen.canvas,g);
+    results.push({raw,crop});
+  }
+  return results;
+}
+async function searchShelfText(raw){
+  const words=raw.split(/\s+/).filter(w=>w.length>2);
+  const queries=[];
+  if(words.length>=2)queries.push(words.slice(0,7).join(' '));
+  if(words.length>7)queries.push(words.slice(-7).join(' '));
+  let items=[];
+  for(const q of queries){try{items.push(...await googleBooks(q))}catch(e){}}
+  const unique=[];const seen=new Set();
+  for(const it of items){const id=it.id||JSON.stringify(it.volumeInfo);if(!seen.has(id)){seen.add(id);unique.push(it)}}
+  unique.sort((a,b)=>{
+    const av=a.volumeInfo||{},bv=b.volumeInfo||{};
+    const as=scoreText(raw,(av.title||'')+' '+(av.authors||[]).join(' ')),bs=scoreText(raw,(bv.title||'')+' '+(bv.authors||[]).join(' '));return bs-as
+  });
+  return unique.slice(0,4).map(it=>gbToBook(it,raw));
+}
+async function shelfProcess(file){
+  $('#shelfWork').classList.remove('hidden');$('#shelfResults').innerHTML='';$('#ocrDebug').classList.add('hidden');shelfCandidates=[];
   try{
-    const img=await loadImageFromFile(file);
-    preview.innerHTML=`<img src="${img.src}" alt="Shelf photo">`;
-    let allText=[];
-    // Full-image OCR after rotating the photo so vertical book-spine text becomes horizontal.
-    const full90=canvasCropRotate(img,0,0,img.naturalWidth,img.naturalHeight,90,1.25);
-    allText.push(await ocrCanvas(full90,'rotated shelf photo',status));
-    // Also OCR overlapping vertical sections. This helps when several spines are close together.
-    const w=img.naturalWidth,h=img.naturalHeight;
-    const sections=Math.min(8,Math.max(4,Math.ceil(w/220)));
-    const overlap=.12;
-    for(let i=0;i<sections;i++){
-      const sw=w/sections*(1+overlap);
-      const sx=Math.max(0,Math.min(w-sw,(i*w/sections)-sw*overlap/2));
-      const crop=canvasCropRotate(img,sx,0,sw,h,90,1.7);
-      allText.push(await ocrCanvas(crop,`spine group ${i+1} of ${sections}`,status));
-    }
-    const lines=usefulOCRLines(allText.join('\n'));
-    if(!lines.length){
-      status.textContent='I could not read any book spines. Try moving closer and filling the photo with the books.';
-      return;
-    }
-    // Show the OCR text so failures are diagnosable instead of silently returning nothing.
-    const debug=document.createElement('details');
-    debug.className='ocrDebug';
-    debug.innerHTML=`<summary>Text detected (${lines.length})</summary><div>${lines.slice(0,20).map(esc).join('<br>')}</div>`;
-    results.appendChild(debug);
-
-    status.textContent=`I read ${lines.length} text lines. Searching for likely books…`;
-    const candidates=await identifyShelfText(lines,status);
-    if(!candidates.length){
-      status.textContent='I could read text, but could not find confident book matches. Try a closer photo with the full spines visible.';
-      return;
-    }
-
-    status.innerHTML=`Review ${candidates.length} possible book${candidates.length===1?'':'s'} before adding.`;
-    const bar=document.createElement('div');
-    bar.className='reviewBar';
-    bar.innerHTML=`<span><b>${candidates.length}</b> possible books</span><button id="addSelectedShelf">Add Selected to Owned</button>`;
-    results.appendChild(bar);
-
-    candidates.forEach((c,i)=>{
-      let ex=c.isbn?existingByISBN(c.isbn):books.find(b=>
-        (b.title||'').toLowerCase()===(c.title||'').toLowerCase() &&
-        (b.author||'').toLowerCase()===(c.author||'').toLowerCase()
-      );
-      let item=document.createElement('div');
-      item.className='shelfItem';
-      let confidence=c.matchScore>=3?'Good match':c.matchScore===2?'Possible match':'Review carefully';
-      item.innerHTML=`${c.cover?`<img src="${esc(c.cover)}">`:`<div class="shelfItem img noCover">No cover</div>`}
-        <div class="info">
-          <h3>${esc(c.title)}</h3>
-          <p>${esc(c.author||'Unknown author')}</p>
-          <div class="state">${esc(ex?(ex.status==='Owned'?'Already in your library':'Already on Want to Buy'):confidence)}</div>
-          <div style="font-size:10px;color:#8a8f95;margin-top:4px">Read: ${esc(c.ocr)}</div>
-        </div>
-        <button class="addShelf" ${ex?'disabled':''}>Select</button>`;
-      item.dataset.selected=ex?'0':'1';
-      item.dataset.index=i;
-      const btn=item.querySelector('.addShelf');
-      if(!ex){
-        btn.onclick=()=>{
-          item.dataset.selected=item.dataset.selected==='1'?'0':'1';
-          btn.textContent=item.dataset.selected==='1'?'Select':'Selected';
-          btn.style.opacity=item.dataset.selected==='1'?'1':'.6';
-        };
+    const im=await imageFromFile(file),base=canvasFromImage(im,1500);$('#shelfPreview').src=base.toDataURL('image/jpeg',.85);
+    setShelfStatus('Preparing shelf image…',5);
+    shelfWorker=await Tesseract.createWorker('eng',1,{logger:m=>{if(m.status==='recognizing text'&&m.progress)setShelfStatus('Reading shelf text…',25+m.progress*35)}});
+    await shelfWorker.setParameters({tessedit_pageseg_mode:'11',preserve_interword_spaces:'1'});
+    const spines=await identifySpines(base);setShelfStatus(`Found ${spines.length} possible book regions. Matching titles…`,65);
+    let debug=[];
+    for(let i=0;i<spines.length;i++){
+      const s=spines[i];debug.push(`Region ${i+1}: ${s.raw}`);
+      const matches=await searchShelfText(s.raw);setShelfStatus(`Matching book ${i+1} of ${spines.length}…`,65+(i/spines.length)*30);
+      if(matches.length){
+        const best=matches[0],score=scoreText(s.raw,best.title+' '+best.author),existing=isDuplicate(best.isbn,best.title,best.author);
+        shelfCandidates.push({...best,raw:s.raw,score,existing,selected:!existing||existing.status==='Want to Buy'});
+      }else{
+        shelfCandidates.push({title:'Possible book match',author:'',isbn:'',cover:'',raw:s.raw,score:0,selected:false,needsSearch:true});
       }
-      results.appendChild(item);
-    });
-
-    $('#addSelectedShelf').onclick=()=>{
-      let added=0;
-      candidates.forEach((c,i)=>{
-        let el=results.querySelector(`.shelfItem[data-index="${i}"]`);
-        if(!el||el.dataset.selected!=='1'||(c.isbn&&existingByISBN(c.isbn)))return;
-        books.unshift({
-          id:crypto.randomUUID(),isbn:c.isbn,title:c.title||'Unknown title',
-          author:c.author||'Unknown author',cover:c.cover||'',
-          publisher:c.publisher||'',year:c.year||'',description:c.description||'',
-          status:'Owned',added:Date.now(),store:'',price:'',notes:''
-        });
-        added++;
-      });
-      save();renderAll();
-      alert(added?`${added} book${added===1?'':'s'} added to Owned.`:'No new books were selected.');
-      nav('library');
-    };
+    }
+    if(shelfWorker){await shelfWorker.terminate();shelfWorker=null}
+    setShelfStatus(`Done — ${shelfCandidates.length} book regions found.`,100);
+    $('#ocrDebug').innerHTML=`<div class="debugBox"><details><summary>Show OCR text used for matching</summary><div class="debugText">${esc(debug.join('\\n'))}</div></details></div>`;
+    $('#ocrDebug').classList.remove('hidden');
+    renderShelfResults();
   }catch(e){
-    console.error('Shelf scan error:',e);
-    status.textContent='Shelf scan failed. Try a closer, brighter photo with the book spines facing the camera.';
+    console.error(e);setShelfStatus('Shelf scan could not complete.',0);
+    $('#shelfResults').innerHTML=`<div class="empty"><b>Could not scan this photo</b><span>Try a sharper photo with the book spines filling more of the frame.</span></div>`;
+    if(shelfWorker){try{await shelfWorker.terminate()}catch(x){}shelfWorker=null}
   }
 }
+function renderShelfResults(){
+  if(!shelfCandidates.length){$('#shelfResults').innerHTML=`<div class="empty"><b>No book regions detected</b><span>Try moving closer so the spines fill more of the photo.</span></div>`;return}
+  let html=`<div class="shelfToolbar"><button onclick="selectAllShelf(true)">Select all</button><button onclick="selectAllShelf(false)">Clear all</button></div>`;
+  shelfCandidates.forEach((b,i)=>{
+    let conf=b.score>=.55?'High confidence':b.score>=.3?'Possible match':'Low confidence',cl=b.score>=.55?'confHigh':b.score>=.3?'confMed':'confLow';
+    let state=b.existing?(b.existing.status==='Owned'?'Already in your library':'Already on Want to Buy'):'';
+    html+=`<div class="resultCard"><div class="resultTop">${b.cover?`<img class="resultCover" src="${esc(b.cover)}">`:`<div class="resultCover noCover">No cover</div>`}<div class="resultInfo"><div class="resultTitle">${esc(b.title||'Possible book match')}</div><div class="resultAuthor">${esc(b.author||'')}</div><span class="confidence ${cl}">${conf}</span>${state?`<div class="resultAuthor"><b>${esc(state)}</b></div>`:''}</div></div><div class="ocrRead">Read: ${esc(b.raw)}</div><div class="resultActions">${b.existing&&b.existing.status==='Owned'?`<button class="skipBtn" disabled>Already Owned</button>`:`<button class="addBtn" onclick="toggleShelf(${i})">${b.selected?'✓ Selected':'Select'}</button>`}${b.needsSearch?`<button class="searchBtn" onclick="manualShelfSearch(${i})">Search</button>`:`<button class="searchBtn" onclick="toggleShelf(${i})">${b.selected?'Deselect':'Select'}</button>`}</div></div>`;
+  });
+  html+=`<button class="primary big" onclick="addSelectedShelf()" style="margin-top:8px">Add Selected to Owned</button>`;
+  $('#shelfResults').innerHTML=html;
+}
+function toggleShelf(i){if(shelfCandidates[i].existing&&shelfCandidates[i].existing.status==='Owned')return;shelfCandidates[i].selected=!shelfCandidates[i].selected;renderShelfResults()}
+function selectAllShelf(v){shelfCandidates.forEach(x=>{if(!(x.existing&&x.existing.status==='Owned'))x.selected=v});renderShelfResults()}
+function manualShelfSearch(i){
+  const q=prompt('Enter the title or author for this book:',shelfCandidates[i].raw||'');if(!q)return;
+  googleBooks(q).then(items=>{if(!items.length){alert('No matches found.');return}const b=gbToBook(items[0],shelfCandidates[i].raw);b.score=scoreText(shelfCandidates[i].raw,b.title+' '+b.author);b.existing=isDuplicate(b.isbn,b.title,b.author);b.selected=!b.existing;shelfCandidates[i]=b;renderShelfResults()}).catch(()=>alert('Book search failed.'))
+}
+function addSelectedShelf(){
+  let added=0, moved=0;
+  for(const b of shelfCandidates){
+    if(!b.selected||b.needsSearch)continue;
+    if(b.existing&&b.existing.status==='Owned')continue;
+    if(b.existing&&b.existing.status==='Want to Buy'){b.existing.status='Owned';b.existing.added=Date.now();moved++;continue}
+    if(!b.title)continue;
+    books.unshift({id:crypto.randomUUID(),isbn:normalizeISBN(b.isbn||''),title:b.title,author:b.author,cover:b.cover,publisher:b.publisher||'',year:b.year||'',description:b.description||'',status:'Owned',added:Date.now(),store:'',price:'',notes:''});added++;
+  }
+  save();alert(`${added} book${added===1?'':'s'} added to Owned${moved?` and ${moved} moved from Want to Buy`:''}.`);nav('library');
+}
 
+/* events */
 $$('nav button').forEach(b=>b.onclick=()=>b.dataset.nav==='scan'?startCamera():nav(b.dataset.nav));
 $('#scanHome').onclick=startCamera;$('#scanLib').onclick=startCamera;
-$('#shelfHome').onclick=()=>nav('shelfScan');$('#shelfLib').onclick=()=>nav('shelfScan');
-$('#closeScan').onclick=()=>nav('home');$('#closeShelf').onclick=()=>nav('home');$('#backDetails').onclick=()=>nav('library');$('#seeAll').onclick=()=>nav('library');
-$('#search').oninput=renderLibrary;$('#lookupManual').onclick=()=>lookup($('#manualIsbn').value);$('#shelfPhoto').onchange=e=>scanShelfFile(e.target.files[0]);
+$('#shelfHome').onclick=()=>nav('shelf');$('#shelfLib').onclick=()=>nav('shelf');
+$('#closeScan').onclick=()=>nav('home');$('#closeShelf').onclick=()=>nav('home');
+$('#backDetails').onclick=()=>nav('library');$('#seeAll').onclick=()=>nav('library');
+$('#search').oninput=renderLibrary;$('#lookupManual').onclick=()=>lookup($('#manualIsbn').value);
+$('#chooseShelf').onclick=()=>$('#shelfFile').click();
+$('#shelfFile').onchange=e=>{if(e.target.files[0])shelfProcess(e.target.files[0])};
 $$('.chip').forEach(b=>b.onclick=()=>{$$('.chip').forEach(c=>c.classList.remove('active'));b.classList.add('active');currentFilter=b.dataset.filter;renderLibrary()});
 $$('.stats button').forEach(b=>b.onclick=()=>{currentFilter=b.dataset.filter;nav('library')});
 renderAll();
