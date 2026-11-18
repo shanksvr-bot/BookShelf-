@@ -112,46 +112,180 @@ async function stopCamera(){
   if(scanVideo){try{scanVideo.pause();if(scanVideo.srcObject)scanVideo.srcObject.getTracks().forEach(t=>t.stop())}catch(e){}scanVideo.remove();scanVideo=null}
   let v=$('#video');if(v){v.srcObject=null;v.style.display=''}resetCandidate();scanLocked=false
 }
+function loadImageFromFile(file){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>resolve(img);
+    img.onerror=reject;
+    img.src=URL.createObjectURL(file);
+  });
+}
+function canvasCropRotate(img,sx,sy,sw,sh,angle=0,scale=1.7){
+  const rad=Math.abs(angle)*Math.PI/180;
+  const rw=Math.ceil((Math.abs(Math.cos(rad))*sw+Math.abs(Math.sin(rad))*sh)*scale);
+  const rh=Math.ceil((Math.abs(Math.sin(rad))*sw+Math.abs(Math.cos(rad))*sh)*scale);
+  const c=document.createElement('canvas');c.width=rw;c.height=rh;
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,rw,rh);
+  ctx.save();ctx.translate(rw/2,rh/2);ctx.rotate(angle*Math.PI/180);ctx.scale(scale,scale);
+  ctx.drawImage(img,sx,sy,sw,sh,-sw/2,-sh/2,sw,sh);ctx.restore();
+  return c;
+}
+async function ocrCanvas(canvas,label,status){
+  const {data:{text}}=await Tesseract.recognize(canvas,'eng',{
+    logger:m=>{
+      if(m.status==='recognizing text'){
+        status.textContent=`Reading ${label}… ${Math.round((m.progress||0)*100)}%`;
+      }
+    }
+  });
+  return text;
+}
+function cleanOCRLine(line){
+  return line.replace(/[|_~`]+/g,' ')
+    .replace(/[^\p{L}\p{N}.'’&,:;!?()\- ]/gu,' ')
+    .replace(/\s+/g,' ').trim();
+}
+function usefulOCRLines(text){
+  return [...new Set(text.split(/\n+/).map(cleanOCRLine)
+    .filter(x=>x.length>=3)
+    .filter(x=>/[A-Za-z]/.test(x))
+    .filter(x=>!/^(page|copyright|www|http|isbn|library|publisher|press)$/i.test(x)))];
+}
+async function identifyShelfText(lines,status){
+  let candidates=[], seen=new Set();
+  for(let raw of lines.slice(0,30)){
+    let q=raw.replace(/\b(the|a|an)\b/gi,' ').replace(/\s+/g,' ').trim();
+    if(q.length<3)continue;
+    try{
+      let g=await fetchJSON('https://www.googleapis.com/books/v1/volumes?q='+encodeURIComponent(q)+'&maxResults=5');
+      let items=g.items||[];
+      // Prefer a title that shares several meaningful words with the OCR text.
+      let words=q.toLowerCase().split(/\s+/).filter(w=>w.length>2);
+      let scored=items.map(item=>{
+        let v=item.volumeInfo||{}, hay=((v.title||'')+' '+(v.subtitle||'')+' '+(v.authors||[]).join(' ')).toLowerCase();
+        let score=words.reduce((n,w)=>n+(hay.includes(w)?1:0),0);
+        return {item,score};
+      }).sort((a,b)=>b.score-a.score)[0];
+      if(scored?.item?.volumeInfo){
+        let v=scored.item.volumeInfo;
+        let isbn13=(v.industryIdentifiers||[]).find(i=>i.type==='ISBN_13')?.identifier||'';
+        let isbn10=(v.industryIdentifiers||[]).find(i=>i.type==='ISBN_10')?.identifier||'';
+        let key=cleanISBN(isbn13||isbn10)||((v.title||'')+'|'+(v.authors||[]).join(',')).toLowerCase();
+        if(!seen.has(key)){
+          seen.add(key);
+          candidates.push({
+            ocr:raw,isbn:isbn13||isbn10,title:v.title||raw,
+            author:(v.authors||[]).join(', '),
+            cover:v.imageLinks?.thumbnail?.replace('http:','https:')||'',
+            publisher:v.publisher||'',year:v.publishedDate||'',
+            description:v.description||'',matchScore:scored.score
+          });
+        }
+      }
+    }catch(e){}
+  }
+  return candidates.sort((a,b)=>b.matchScore-a.matchScore);
+}
 async function scanShelfFile(file){
   if(!file)return;
-  let preview=$('#shelfPreview'),status=$('#shelfStatus'),results=$('#shelfResults');results.innerHTML='';status.textContent='Loading shelf photo…';
-  let url=URL.createObjectURL(file);preview.innerHTML=`<img src="${url}" alt="Shelf photo">`;
+  const preview=$('#shelfPreview'),status=$('#shelfStatus'),results=$('#shelfResults');
+  results.innerHTML='';
+  preview.innerHTML='';
+  status.textContent='Preparing shelf photo…';
   try{
-    status.textContent='Reading book spines… This can take a little while on an iPhone.';
-    let {data:{text}}=await Tesseract.recognize(file,'eng',{logger:m=>{if(m.status==='recognizing text')status.textContent=`Reading book spines… ${Math.round((m.progress||0)*100)}%`;}});
-    let lines=[...new Set(text.split(/\n+/).map(x=>x.replace(/[|_]+/g,' ').replace(/\s+/g,' ').trim()).filter(x=>x.length>=3))];
-    if(!lines.length){status.textContent='I could not read any book titles. Try a closer, brighter photo.';return}
-    status.textContent=`Found ${lines.length} text lines. Searching for likely books…`;
-    let candidates=[];
-    for(const line of lines.slice(0,18)){
-      try{
-        let g=await fetchJSON('https://www.googleapis.com/books/v1/volumes?q=intitle:'+encodeURIComponent(line)+'&maxResults=3');
-        let items=g.items||[];
-        let item=items.find(x=>x.volumeInfo?.title);
-        if(item){let v=item.volumeInfo||{};candidates.push({ocr:line,isbn:(v.industryIdentifiers||[]).find(i=>i.type==='ISBN_13')?.identifier||(v.industryIdentifiers||[]).find(i=>i.type==='ISBN_10')?.identifier||'',title:v.title||line,author:(v.authors||[]).join(', '),cover:v.imageLinks?.thumbnail?.replace('http:','https:')||'',publisher:v.publisher||'',year:v.publishedDate||'',description:v.description||''})}
-      }catch(e){}
+    const img=await loadImageFromFile(file);
+    preview.innerHTML=`<img src="${img.src}" alt="Shelf photo">`;
+    let allText=[];
+    // Full-image OCR after rotating the photo so vertical book-spine text becomes horizontal.
+    const full90=canvasCropRotate(img,0,0,img.naturalWidth,img.naturalHeight,90,1.25);
+    allText.push(await ocrCanvas(full90,'rotated shelf photo',status));
+    // Also OCR overlapping vertical sections. This helps when several spines are close together.
+    const w=img.naturalWidth,h=img.naturalHeight;
+    const sections=Math.min(8,Math.max(4,Math.ceil(w/220)));
+    const overlap=.12;
+    for(let i=0;i<sections;i++){
+      const sw=w/sections*(1+overlap);
+      const sx=Math.max(0,Math.min(w-sw,(i*w/sections)-sw*overlap/2));
+      const crop=canvasCropRotate(img,sx,0,sw,h,90,1.7);
+      allText.push(await ocrCanvas(crop,`spine group ${i+1} of ${sections}`,status));
     }
-    // Deduplicate results by ISBN or title+author.
-    let seen=new Set();candidates=candidates.filter(c=>{let k=cleanISBN(c.isbn)||((c.title||'')+'|'+(c.author||'')).toLowerCase();if(seen.has(k))return false;seen.add(k);return true});
-    if(!candidates.length){status.textContent='I could not confidently identify books from that photo. Try one shelf at a time with the spines facing the camera.';return}
+    const lines=usefulOCRLines(allText.join('\n'));
+    if(!lines.length){
+      status.textContent='I could not read any book spines. Try moving closer and filling the photo with the books.';
+      return;
+    }
+    // Show the OCR text so failures are diagnosable instead of silently returning nothing.
+    const debug=document.createElement('details');
+    debug.className='ocrDebug';
+    debug.innerHTML=`<summary>Text detected (${lines.length})</summary><div>${lines.slice(0,20).map(esc).join('<br>')}</div>`;
+    results.appendChild(debug);
+
+    status.textContent=`I read ${lines.length} text lines. Searching for likely books…`;
+    const candidates=await identifyShelfText(lines,status);
+    if(!candidates.length){
+      status.textContent='I could read text, but could not find confident book matches. Try a closer photo with the full spines visible.';
+      return;
+    }
+
     status.innerHTML=`Review ${candidates.length} possible book${candidates.length===1?'':'s'} before adding.`;
-    let bar=document.createElement('div');bar.className='reviewBar';bar.innerHTML=`<span><b>${candidates.length}</b> possible books</span><button id="addSelectedShelf">Add Selected to Owned</button>`;results.appendChild(bar);
+    const bar=document.createElement('div');
+    bar.className='reviewBar';
+    bar.innerHTML=`<span><b>${candidates.length}</b> possible books</span><button id="addSelectedShelf">Add Selected to Owned</button>`;
+    results.appendChild(bar);
+
     candidates.forEach((c,i)=>{
-      let ex=c.isbn?existingByISBN(c.isbn):books.find(b=>(b.title||'').toLowerCase()===(c.title||'').toLowerCase()&&(b.author||'').toLowerCase()===(c.author||'').toLowerCase());
-      let item=document.createElement('div');item.className='shelfItem';
-      let state=ex?(ex.status==='Owned'?'Already in your library':'Already on Want to Buy'):'Ready to add';
-      item.innerHTML=`${c.cover?`<img src="${esc(c.cover)}">`:`<div class="shelfItem img noCover">No cover</div>`}<div class="info"><h3>${esc(c.title)}</h3><p>${esc(c.author||'Unknown author')}</p><div class="state">${esc(state)}</div></div><button class="addShelf" ${ex?'disabled':''}>Select</button>`;
-      item.dataset.selected=ex?'0':'1';item.dataset.index=i;
-      let btn=item.querySelector('.addShelf');if(!ex)btn.onclick=()=>{item.dataset.selected=item.dataset.selected==='1'?'0':'1';btn.textContent=item.dataset.selected==='1'?'Select':'Selected';btn.style.opacity=item.dataset.selected==='1'?'1':'.6'};
+      let ex=c.isbn?existingByISBN(c.isbn):books.find(b=>
+        (b.title||'').toLowerCase()===(c.title||'').toLowerCase() &&
+        (b.author||'').toLowerCase()===(c.author||'').toLowerCase()
+      );
+      let item=document.createElement('div');
+      item.className='shelfItem';
+      let confidence=c.matchScore>=3?'Good match':c.matchScore===2?'Possible match':'Review carefully';
+      item.innerHTML=`${c.cover?`<img src="${esc(c.cover)}">`:`<div class="shelfItem img noCover">No cover</div>`}
+        <div class="info">
+          <h3>${esc(c.title)}</h3>
+          <p>${esc(c.author||'Unknown author')}</p>
+          <div class="state">${esc(ex?(ex.status==='Owned'?'Already in your library':'Already on Want to Buy'):confidence)}</div>
+          <div style="font-size:10px;color:#8a8f95;margin-top:4px">Read: ${esc(c.ocr)}</div>
+        </div>
+        <button class="addShelf" ${ex?'disabled':''}>Select</button>`;
+      item.dataset.selected=ex?'0':'1';
+      item.dataset.index=i;
+      const btn=item.querySelector('.addShelf');
+      if(!ex){
+        btn.onclick=()=>{
+          item.dataset.selected=item.dataset.selected==='1'?'0':'1';
+          btn.textContent=item.dataset.selected==='1'?'Select':'Selected';
+          btn.style.opacity=item.dataset.selected==='1'?'1':'.6';
+        };
+      }
       results.appendChild(item);
     });
+
     $('#addSelectedShelf').onclick=()=>{
       let added=0;
-      candidates.forEach((c,i)=>{let el=results.querySelector(`.shelfItem[data-index="${i}"]`);if(!el||el.dataset.selected!=='1'||(c.isbn&&existingByISBN(c.isbn)))return;books.unshift({id:crypto.randomUUID(),isbn:c.isbn,title:c.title||'Unknown title',author:c.author||'Unknown author',cover:c.cover||'',publisher:c.publisher||'',year:c.year||'',description:c.description||'',status:'Owned',added:Date.now(),store:'',price:'',notes:''});added++});
-      save();renderAll();alert(added?`${added} book${added===1?'':'s'} added to Owned.`:'No new books were selected.');nav('library');
+      candidates.forEach((c,i)=>{
+        let el=results.querySelector(`.shelfItem[data-index="${i}"]`);
+        if(!el||el.dataset.selected!=='1'||(c.isbn&&existingByISBN(c.isbn)))return;
+        books.unshift({
+          id:crypto.randomUUID(),isbn:c.isbn,title:c.title||'Unknown title',
+          author:c.author||'Unknown author',cover:c.cover||'',
+          publisher:c.publisher||'',year:c.year||'',description:c.description||'',
+          status:'Owned',added:Date.now(),store:'',price:'',notes:''
+        });
+        added++;
+      });
+      save();renderAll();
+      alert(added?`${added} book${added===1?'':'s'} added to Owned.`:'No new books were selected.');
+      nav('library');
     };
-  }catch(e){console.error(e);status.textContent='Shelf scan failed. Try a clearer photo with the book spines facing the camera.'}
+  }catch(e){
+    console.error('Shelf scan error:',e);
+    status.textContent='Shelf scan failed. Try a closer, brighter photo with the book spines facing the camera.';
+  }
 }
+
 $$('nav button').forEach(b=>b.onclick=()=>b.dataset.nav==='scan'?startCamera():nav(b.dataset.nav));
 $('#scanHome').onclick=startCamera;$('#scanLib').onclick=startCamera;
 $('#shelfHome').onclick=()=>nav('shelfScan');$('#shelfLib').onclick=()=>nav('shelfScan');
