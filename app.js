@@ -103,7 +103,6 @@ async function save(){
         if (error) throw error;
       }
 
-      console.log('Cloud save successful');
 
     } catch (error) {
       console.error('Cloud save failed:', error);
