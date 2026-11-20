@@ -89,6 +89,7 @@ async function save(){
       const user = sessionData.session?.user;
       if (!user) return;
 KEY = `bookshelf_books_${user.id}`;
+      $('#accountEmail').textContent = user.email || '';
       books = [];
       const { data: remoteBooks, error: fetchError } =
         await supabaseClient
