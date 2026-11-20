@@ -647,7 +647,7 @@ migrateButton.onclick = async function () {
 
   const errorBox = document.createElement('div');
 errorBox.style.cssText = 'position:fixed;top:20%;left:5%;width:90%;background:white;color:#222;padding:20px;z-index:99999;border:2px solid red;border-radius:12px;word-break:break-word;';
-errorBox.textContent = 'SYNC ERROR: ' + String(error) + ' | ' + (error?.message || 'No message');
+eerrorBox.textContent = 'SYNC ERROR:\n' + JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
 document.body.appendChild(errorBox);
   
 
