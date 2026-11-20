@@ -642,8 +642,14 @@ migrateButton.onclick = async function () {
       ' books have been transferred to your cloud account.'
     );
 
-  } catch (error) {
-    alert('Transfer stopped: ' + error.message);
+} catch (error) {
+    console.error('Book transfer error:', error);
+
+    alert(
+      'Transfer stopped:\n' +
+      (error?.message || JSON.stringify(error) || String(error))
+    );
+
     migrateButton.textContent = 'Sync My Books to Cloud';
     migrateButton.disabled = false;
   }
