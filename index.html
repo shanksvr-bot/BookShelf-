@@ -1,3 +1,4 @@
+```html
 <!doctype html>
 <html lang="en">
 <head>
@@ -8,69 +9,161 @@
 <link rel="stylesheet" href="style.css">
 <title>BookShelf</title>
 </head>
+
 <body>
+
 <div id="app">
+
+<!-- LOGIN / ACCOUNT SCREEN -->
+<main id="auth" class="screen active">
+  <section class="authBox">
+    <div class="heroIcon">📚</div>
+    <h1>BookShelf</h1>
+    <p>Your personal book catalog</p>
+
+    <div class="authForm">
+      <input id="authEmail" type="email" autocomplete="email" placeholder="Email">
+      <input id="authPassword" type="password" autocomplete="current-password" placeholder="Password">
+
+      <button id="signInBtn" class="primary big">Sign In</button>
+      <button id="createAccountBtn" class="secondary big">Create Account</button>
+
+      <div id="authStatus" class="authStatus"></div>
+    </div>
+  </section>
+</main>
+
 <header>
-  <div><div class="brand">BookShelf</div><div class="sub">Your personal book catalog</div></div>
+  <div>
+    <div class="brand">BookShelf</div>
+    <div class="sub">Your personal book catalog</div>
+  </div>
   <button id="settingsBtn" class="iconbtn">⚙️</button>
 </header>
 
-<main id="home" class="screen active">
-  <section class="hero"><div class="heroIcon">📚</div><div><h1>My Library</h1><p><span id="bookCount">0</span> books in your collection</p></div></section>
+<main id="home" class="screen">
+  <section class="hero">
+    <div class="heroIcon">📚</div>
+    <div>
+      <h1>My Library</h1>
+      <p><span id="bookCount">0</span> books in your collection</p>
+    </div>
+  </section>
+
   <button id="scanHome" class="primary big">📷 Scan a Book</button>
   <button id="shelfHome" class="secondary big">📚 Scan Shelf</button>
+
   <div class="stats">
     <button data-filter="owned"><b id="ownedCount">0</b><span>Owned</span></button>
     <button data-filter="want"><b id="wantCount">0</b><span>Want to Buy</span></button>
     <button data-filter="read"><b id="readCount">0</b><span>Read</span></button>
   </div>
-  <div class="sectionHead"><h2>Recent</h2><button id="seeAll">See all</button></div>
+
+  <div class="sectionHead">
+    <h2>Recent</h2>
+    <button id="seeAll">See all</button>
+  </div>
+
   <div id="recent" class="bookgrid"></div>
 </main>
 
 <main id="library" class="screen">
-  <div class="pageHead"><h1>My Library</h1><div class="headActions"><button id="shelfLib" class="secondary small">📚 Shelf</button><button id="scanLib" class="smallPrimary">📷 Scan</button></div></div>
-  <div class="search"><span>🔎</span><input id="search" placeholder="Search title, author, ISBN..."></div>
-  <div class="chips"><button class="chip active" data-filter="all">All</button><button class="chip" data-filter="owned">Owned</button><button class="chip" data-filter="want">Want to Buy</button><button class="chip" data-filter="read">Read</button></div>
+  <div class="pageHead">
+    <h1>My Library</h1>
+    <div class="headActions">
+      <button id="shelfLib" class="secondary small">📚 Shelf</button>
+      <button id="scanLib" class="smallPrimary">📷 Scan</button>
+    </div>
+  </div>
+
+  <div class="search">
+    <span>🔎</span>
+    <input id="search" placeholder="Search title, author, ISBN...">
+  </div>
+
+  <div class="chips">
+    <button class="chip active" data-filter="all">All</button>
+    <button class="chip" data-filter="owned">Owned</button>
+    <button class="chip" data-filter="want">Want to Buy</button>
+    <button class="chip" data-filter="read">Read</button>
+  </div>
+
   <div id="libraryList" class="bookgrid"></div>
 </main>
 
 <main id="want" class="screen">
-  <div class="pageHead"><h1>Want to Buy</h1></div>
+  <div class="pageHead">
+    <h1>Want to Buy</h1>
+  </div>
+
   <div id="wantList" class="bookgrid"></div>
 </main>
 
 <main id="scan" class="screen">
-  <div class="pageHead"><button id="closeScan" class="back">‹</button><h1>Scan Book</h1><span></span></div>
-  <div class="scanner"><video id="video" playsinline muted></video><div class="scanFrame"><span></span></div><div id="scanMsg">Starting camera scanner…</div></div>
-  <div class="manual"><p>Having trouble scanning?</p><div class="manualRow"><input id="manualIsbn" inputmode="numeric" placeholder="Enter ISBN manually"><button id="lookupManual" class="smallPrimary">Look up</button></div></div>
+  <div class="pageHead">
+    <button id="closeScan" class="back">‹</button>
+    <h1>Scan Book</h1>
+    <span></span>
+  </div>
+
+  <div class="scanner">
+    <video id="video" playsinline muted></video>
+    <div class="scanFrame"><span></span></div>
+    <div id="scanMsg">Starting camera scanner…</div>
+  </div>
+
+  <div class="manual">
+    <p>Having trouble scanning?</p>
+
+    <div class="manualRow">
+      <input id="manualIsbn" inputmode="numeric" placeholder="Enter ISBN manually">
+      <button id="lookupManual" class="smallPrimary">Look up</button>
+    </div>
+  </div>
 </main>
 
 <main id="shelf" class="screen">
-  <div class="pageHead"><button id="closeShelf" class="back">‹</button><h1>Scan Shelf</h1><span></span></div>
+  <div class="pageHead">
+    <button id="closeShelf" class="back">‹</button>
+    <h1>Scan Shelf</h1>
+    <span></span>
+  </div>
+
   <div class="shelfIntro">
     <b>Photograph a shelf of books</b>
-    <span>For best results, stand straight in front of the shelf, fill the frame with the book spines, and use good lighting.</span>
+    <span>
+      For best results, stand straight in front of the shelf,
+      fill the frame with the book spines, and use good lighting.
+    </span>
   </div>
+
   <input id="shelfCamera" type="file" accept="image/*" capture="environment" hidden>
+  <input id="shelfFile" type="file" accept="image/*" hidden>
 
-<input id="shelfFile" type="file" accept="image/*" hidden>
+  <div class="shelfButtons">
+    <button id="chooseShelf" class="primary big">📷 Take Photo</button>
+    <button id="uploadShelf" class="primary big">🖼️ Choose Existing Photo</button>
+  </div>
 
-<div class="shelfButtons">
-  <button id="chooseShelf" class="primary big">📷 Take Photo</button>
-  <button id="uploadShelf" class="primary big">🖼️ Choose Existing Photo</button>
-</div>
   <div id="shelfWork" class="shelfWork hidden">
     <img id="shelfPreview" class="shelfPreview">
     <div id="shelfStatus" class="shelfStatus">Preparing image…</div>
-    <div class="progress"><div id="shelfProgress"></div></div>
+    <div class="progress">
+      <div id="shelfProgress"></div>
+    </div>
     <div id="ocrDebug" class="ocrDebug hidden"></div>
   </div>
+
   <div id="shelfResults" class="shelfResults"></div>
 </main>
 
 <main id="details" class="screen">
-  <div class="pageHead"><button id="backDetails" class="back">‹</button><h1>Book Details</h1><span></span></div>
+  <div class="pageHead">
+    <button id="backDetails" class="back">‹</button>
+    <h1>Book Details</h1>
+    <span></span>
+  </div>
+
   <div id="detailsContent"></div>
 </main>
 
@@ -80,10 +173,13 @@
   <button data-nav="scan">📷<span>Scan</span></button>
   <button data-nav="want">⭐<span>Want to Buy</span></button>
 </nav>
+
 </div>
 
 <script src="https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
+
 </body>
 </html>
+```
