@@ -65,8 +65,8 @@ async function startRealtimeSync(user) {
     });
 }
 
-const KEY='bookshelf_books_v1';
-let books=JSON.parse(localStorage.getItem(KEY)||'[]');
+let KEY='bookshelf_books_v1';
+let books=[];
 let currentFilter='all';
 let scannerControls=null,zxingReader=null,scanLocked=false,candidateISBN='',candidateHits=0,candidateSince=0,scanVideo=null;
 let shelfCandidates=[], shelfWorker=null;
@@ -88,7 +88,8 @@ async function save(){
 
       const user = sessionData.session?.user;
       if (!user) return;
-
+KEY = `bookshelf_books_${user.id}`;
+      books = [];
       const { data: remoteBooks, error: fetchError } =
         await supabaseClient
           .from('books')
