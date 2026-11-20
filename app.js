@@ -208,7 +208,40 @@ function showDetails(id){
 }
 function saveDetails(id){let b=books.find(x=>x.id===id);b.store=$('#storeField').value;b.price=$('#priceField').value;b.notes=$('#notesField').value;save();alert('Book updated.');showDetails(id)}
 function cycleStatus(id){let b=books.find(x=>x.id===id),s=['Owned','Want to Buy','Reading','Read'];b.status=s[(s.indexOf(b.status)+1)%s.length];save();showDetails(id)}
-function removeBook(id){if(confirm('Remove this book from your library?')){books=books.filter(x=>x.id!==id);save();nav('library')}}
+async function removeBook(id) {
+  if (!confirm('Remove this book from your library?')) return;
+
+  const book = books.find(x => x.id === id);
+  if (!book) return;
+
+  try {
+    if (book.cloudId) {
+      const { data: sessionData, error: sessionError } =
+        await supabaseClient.auth.getSession();
+
+      if (sessionError) throw sessionError;
+
+      const user = sessionData.session?.user;
+      if (!user) throw new Error('You must be signed in to delete this book.');
+
+      const { error } = await supabaseClient
+        .from('books')
+        .delete()
+        .eq('id', book.cloudId)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+    }
+
+    books = books.filter(x => x.id !== id);
+    save();
+    nav('library');
+
+  } catch (error) {
+    console.error('Book deletion failed:', error);
+    alert('Could not delete this book. Please try again.');
+  }
+}
 function cleanISBN(v){return String(v||'').replace(/[^0-9Xx]/g,'').toUpperCase()}
 function isbn10to13(isbn){isbn=cleanISBN(isbn);if(isbn.length!==10)return isbn;return '978'+isbn.slice(0,9)}
 function isbn13Check(s){let sum=0;for(let i=0;i<12;i++)sum+=Number(s[i])*(i%2?3:1);return String((10-(sum%10))%10)===s[12]}
