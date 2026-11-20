@@ -102,3 +102,11 @@ nav button{font-size:19px;display:flex;flex-direction:column;align-items:center;
 }
   box-sizing: border-box;
 }
+body.auth-locked header,
+body.auth-locked nav {
+  display: none;
+}
+
+body.auth-locked #app > .screen:not(#auth) {
+  display: none !important;
+}
