@@ -553,3 +553,98 @@ $('#shelfFile').onchange=e=>{
 };$$('.chip').forEach(b=>b.onclick=()=>{$$('.chip').forEach(c=>c.classList.remove('active'));b.classList.add('active');currentFilter=b.dataset.filter;renderLibrary()});
 $$('.stats button').forEach(b=>b.onclick=()=>{currentFilter=b.dataset.filter;nav('library')});
 renderAll();
+
+
+
+// TEMPORARY: Transfer existing books to Supabase
+const migrateButton = document.createElement('button');
+
+migrateButton.textContent = 'Sync My Books to Cloud';
+migrateButton.id = 'migrateBooksButton';
+
+migrateButton.style.cssText = `
+  position:fixed;
+  bottom:85px;
+  right:15px;
+  z-index:9999;
+  background:#2d5b50;
+  color:white;
+  padding:14px 18px;
+  border-radius:12px;
+  font-weight:bold;
+  box-shadow:0 3px 10px #0003;
+`;
+
+document.body.appendChild(migrateButton);
+
+migrateButton.onclick = async function () {
+  if (!confirm('Transfer your existing books to your cloud account?')) return;
+
+  migrateButton.disabled = true;
+  migrateButton.textContent = 'Transferring...';
+
+  try {
+    const { data: sessionData, error: sessionError } =
+      await supabaseClient.auth.getSession();
+
+    if (sessionError) throw sessionError;
+
+    const user = sessionData.session?.user;
+
+    if (!user) throw new Error('Please sign in first.');
+
+    const localBooks = JSON.parse(
+      localStorage.getItem('bookshelf_books_v1') || '[]'
+    );
+
+    if (!localBooks.length) {
+      throw new Error('No books were found on this device.');
+    }
+
+    const { count, error: countError } = await supabaseClient
+      .from('books')
+      .select('id', { count: 'exact', head: true });
+
+    if (countError) throw countError;
+
+    if (count > 0) {
+      throw new Error(
+        'Your cloud library already contains books. No changes were made.'
+      );
+    }
+
+    const cloudBooks = localBooks.map(book => ({
+      user_id: user.id,
+      isbn: book.isbn || null,
+      title: book.title || 'Untitled',
+      author: book.author || null,
+      cover: book.cover || null,
+      publisher: book.publisher || null,
+      year: book.year ? String(book.year) : null,
+      description: book.description || null,
+      status: book.status || 'Owned',
+      added: book.added || Date.now(),
+      store: book.store || null,
+      price: book.price || null,
+      notes: book.notes || null
+    }));
+
+    const { error: insertError } = await supabaseClient
+      .from('books')
+      .insert(cloudBooks);
+
+    if (insertError) throw insertError;
+
+    migrateButton.textContent = 'Cloud Sync Complete!';
+
+    alert(
+      'Success! ' + cloudBooks.length +
+      ' books have been transferred to your cloud account.'
+    );
+
+  } catch (error) {
+    alert('Transfer stopped: ' + error.message);
+    migrateButton.textContent = 'Sync My Books to Cloud';
+    migrateButton.disabled = false;
+  }
+};
