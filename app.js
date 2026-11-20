@@ -359,7 +359,7 @@ function manualShelfSearch(i){
 function addSelectedShelf(){
   let added=0, moved=0;
   for(const b of shelfCandidates){
-    if(!b.selected||b.needsSearch)continue;
+    if(!b.selected)continue;
     if(b.existing&&b.existing.status==='Owned')continue;
     if(b.existing&&b.existing.status==='Want to Buy'){b.existing.status='Owned';b.existing.added=Date.now();moved++;continue}
     if(!b.title)continue;
