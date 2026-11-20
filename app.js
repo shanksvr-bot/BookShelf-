@@ -645,9 +645,10 @@ migrateButton.onclick = async function () {
 } catch (error) {
     console.error('Book transfer error:', error);
 
-    alert(
-      'Transfer stopped:\n' +
-      (error?.message || JSON.stringify(error) || String(error))
+  const errorBox = document.createElement('div');
+errorBox.style.cssText = 'position:fixed;top:20%;left:5%;width:90%;background:white;color:#222;padding:20px;z-index:99999;border:2px solid red;border-radius:12px;word-break:break-word;';
+errorBox.textContent = 'SYNC ERROR: ' + String(error) + ' | ' + (error?.message || 'No message');
+document.body.appendChild(errorBox);
     );
 
     migrateButton.textContent = 'Sync My Books to Cloud';
