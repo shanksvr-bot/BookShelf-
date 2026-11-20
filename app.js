@@ -88,9 +88,7 @@ async function save(){
 
       const user = sessionData.session?.user;
       if (!user) return;
-KEY = `bookshelf_books_${user.id}`;
-      $('#accountEmail').textContent = user.email || '';
-      books = [];
+
       const { data: remoteBooks, error: fetchError } =
         await supabaseClient
           .from('books')
@@ -643,6 +641,9 @@ async function showAppAfterLogin() {
 
     const user = sessionData.session?.user;
     if (!user) return;
+    KEY = `bookshelf_books_${user.id}`;
+$('#accountEmail').textContent = user.email || 'Email unavailable';
+    books = [];
 
     const { data: cloudBooks, error } = await supabaseClient
       .from('books')
