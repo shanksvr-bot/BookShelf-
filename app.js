@@ -649,9 +649,9 @@ migrateButton.onclick = async function () {
 errorBox.style.cssText = 'position:fixed;top:20%;left:5%;width:90%;background:white;color:#222;padding:20px;z-index:99999;border:2px solid red;border-radius:12px;word-break:break-word;';
 errorBox.textContent = 'SYNC ERROR: ' + String(error) + ' | ' + (error?.message || 'No message');
 document.body.appendChild(errorBox);
-    );
+  
 
-    migrateButton.textContent = 'Sync My Books to Cloud';
-    migrateButton.disabled = false;
+migrateButton.textContent = 'Sync My Books to Cloud';
+migrateButton.disabled = false;
   }
 };
