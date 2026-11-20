@@ -9,7 +9,115 @@ let scannerControls=null,zxingReader=null,scanLocked=false,candidateISBN='',cand
 let shelfCandidates=[], shelfWorker=null;
 
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
-function save(){localStorage.setItem(KEY,JSON.stringify(books))}
+let cloudSaveTimer;
+
+async function save(){
+  localStorage.setItem(KEY, JSON.stringify(books));
+
+  clearTimeout(cloudSaveTimer);
+
+  cloudSaveTimer = setTimeout(async () => {
+    try {
+      const { data: sessionData, error: sessionError } =
+        await supabaseClient.auth.getSession();
+
+      if (sessionError) throw sessionError;
+
+      const user = sessionData.session?.user;
+      if (!user) return;
+
+      const { data: remoteBooks, error: fetchError } =
+        await supabaseClient
+          .from('books')
+          .select('*')
+          .eq('user_id', user.id);
+
+      if (fetchError) throw fetchError;
+
+      const usedIds = new Set();
+
+      const cloudBooks = books.map(book => {
+        if (!book.cloudId) {
+          const isbn = String(book.isbn || '').trim();
+
+          let match = isbn
+            ? remoteBooks.find(row =>
+                row.isbn &&
+                row.isbn.trim() === isbn &&
+                !usedIds.has(row.id)
+              )
+            : null;
+
+          if (!match) {
+            const title = String(book.title || '').trim().toLowerCase();
+            const author = String(book.author || '').trim().toLowerCase();
+
+            match = remoteBooks.find(row =>
+              !usedIds.has(row.id) &&
+              String(row.title || '').trim().toLowerCase() === title &&
+              String(row.author || '').trim().toLowerCase() === author
+            );
+          }
+
+          book.cloudId = match ? match.id : crypto.randomUUID();
+        }
+
+        usedIds.add(book.cloudId);
+
+        return {
+          id: book.cloudId,
+          local_id: String(book.id),
+          user_id: user.id,
+          isbn: book.isbn || null,
+          title: book.title || 'Untitled',
+          author: book.author || null,
+          cover: book.cover || null,
+          publisher: book.publisher || null,
+          year: book.year ? String(book.year) : null,
+          description: book.description || null,
+          status: book.status || 'Owned',
+          added: book.added || Date.now(),
+          store: book.store || null,
+          price: book.price || null,
+          notes: book.notes || null
+        };
+      });
+  const matchedCount = cloudBooks.filter(row =>
+        remoteBooks.some(remote => remote.id === row.id)
+      ).length;
+
+      if (remoteBooks.length > 0 && matchedCount !== books.length) {
+        throw new Error(
+          'Only ' + matchedCount + ' of ' + books.length +
+          ' books matched. No cloud changes were made.'
+        );
+      }
+
+      localStorage.setItem(KEY, JSON.stringify(books));
+
+      if (cloudBooks.length) {
+        const { error } = await supabaseClient
+          .from('books')
+          .upsert(cloudBooks, { onConflict: 'id' });
+
+        if (error) throw error;
+      }
+
+      console.log('Cloud save successful');
+
+    } catch (error) {
+      console.error('Cloud save failed:', error);
+    }
+  }, 800);
+}
+
+      console.log('Cloud save successful');
+
+    } catch(error) {
+      console.error('Cloud save failed:', error);
+    }
+  }, 800);
+}
 function nav(id){
   $$('.screen').forEach(x=>x.classList.remove('active'));
   $('#'+id).classList.add('active');
