@@ -1,3 +1,7 @@
+const SUPABASE_URL='https://msyzkbeqmifdxoztsymd.supabase.co';
+const SUPABASE_ANON_KEY='sb_publishable_7_5SW6vnp7CfY4FBahMtvA_Ku44atcG';
+const supabaseClient=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+
 const KEY='bookshelf_books_v1';
 let books=JSON.parse(localStorage.getItem(KEY)||'[]');
 let currentFilter='all';
