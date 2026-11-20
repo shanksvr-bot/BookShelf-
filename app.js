@@ -536,13 +536,57 @@ function showAuthStatus(message, isError=false) {
   status.style.color = isError ? '#a33' : '#68727a';
 }
 
-function showAppAfterLogin() {
-  document.body.classList.remove('auth-locked');
-  document.querySelectorAll('.screen').forEach(x => x.classList.remove('active'));
-  $('#home').classList.add('active');
-  $$('nav button').forEach(x => x.classList.toggle('active', x.dataset.nav === 'home'));
-  renderAll();
+async function showAppAfterLogin() {
+  try {
+    const { data: sessionData, error: sessionError } =
+      await supabaseClient.auth.getSession();
+
+    if (sessionError) throw sessionError;
+
+    const user = sessionData.session?.user;
+    if (!user) return;
+
+    const { data: cloudBooks, error } = await supabaseClient
+      .from('books')
+      .select('*')
+      .eq('user_id', user.id);
+
+    if (error) throw error;
+
+    books = cloudBooks.map(book => ({
+      id: book.local_id || book.id,
+      cloudId: book.id,
+      isbn: book.isbn,
+      title: book.title,
+      author: book.author,
+      cover: book.cover,
+      publisher: book.publisher,
+      year: book.year,
+      description: book.description,
+      status: book.status,
+      added: book.added,
+      store: book.store,
+      price: book.price,
+      notes: book.notes
+    }));
+
+    localStorage.setItem(KEY, JSON.stringify(books));
+
+    document.body.classList.remove('auth-locked');
+    document.querySelectorAll('.screen').forEach(x => x.classList.remove('active'));
+    $('#home').classList.add('active');
+    $$('nav button').forEach(x =>
+      x.classList.toggle('active', x.dataset.nav === 'home')
+    );
+
+    renderAll();
+
+  } catch (error) {
+    console.error('Cloud library download failed:', error);
+    alert('Could not load your cloud library. Please try again.');
+  }
 }
+
 
 function showLoginScreen() {
   document.body.classList.add('auth-locked');
