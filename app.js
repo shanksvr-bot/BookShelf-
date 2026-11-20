@@ -357,15 +357,70 @@ function manualShelfSearch(i){
   googleBooks(q).then(items=>{if(!items.length){alert('No matches found.');return}const b=gbToBook(items[0],shelfCandidates[i].raw);b.score=scoreText(shelfCandidates[i].raw,b.title+' '+b.author);b.existing=isDuplicate(b.isbn,b.title,b.author);b.selected=!b.existing;shelfCandidates[i]=b;renderShelfResults()}).catch(()=>alert('Book search failed.'))
 }
 function addSelectedShelf(){
-  let added=0, moved=0;
-  for(const b of shelfCandidates){
-    if(!b.selected)continue;
-    if(b.existing&&b.existing.status==='Owned')continue;
-    if(b.existing&&b.existing.status==='Want to Buy'){b.existing.status='Owned';b.existing.added=Date.now();moved++;continue}
-    if(!b.title)continue;
-    books.unshift({id:crypto.randomUUID(),isbn:normalizeISBN(b.isbn||''),title:b.title,author:b.author,cover:b.cover,publisher:b.publisher||'',year:b.year||'',description:b.description||'',status:'Owned',added:Date.now(),store:'',price:'',notes:''});added++;
-  }
-  save();alert(`${added} book${added===1?'':'s'} added to Owned${moved?` and ${moved} moved from Want to Buy`:''}.`);nav('library');
+  const selected = shelfCandidates.filter(b => b.selected === true);
+
+  let added = 0;
+  let moved = 0;
+  let skipped = 0;
+
+  selected.forEach(b => {
+    if (!b.title || !String(b.title).trim()) {
+      skipped++;
+      return;
+    }
+
+    const existing = isDuplicate(
+      b.isbn || '',
+      b.title || '',
+      b.author || ''
+    );
+
+    if (existing) {
+      if (existing.status === 'Want to Buy') {
+        existing.status = 'Owned';
+        existing.added = Date.now();
+        moved++;
+      } else if (existing.status === 'Owned') {
+        skipped++;
+      } else {
+        existing.status = 'Owned';
+        existing.added = Date.now();
+        moved++;
+      }
+      return;
+    }
+
+    const newBook = {
+      id: crypto.randomUUID(),
+      isbn: normalizeISBN(b.isbn || ''),
+      title: String(b.title || '').trim(),
+      author: String(b.author || 'Unknown author').trim(),
+      cover: b.cover || '',
+      publisher: b.publisher || '',
+      year: b.year || '',
+      description: b.description || '',
+      status: 'Owned',
+      added: Date.now(),
+      store: '',
+      price: '',
+      notes: b.raw
+        ? `Added from Shelf Scan. Scan text: ${b.raw}`
+        : ''
+    };
+
+    books.unshift(newBook);
+    added++;
+  });
+
+  save();
+
+  alert(
+    `${added} book${added === 1 ? '' : 's'} added to Owned.` +
+    `${moved ? ` ${moved} existing book${moved === 1 ? '' : 's'} moved to Owned.` : ''}` +
+    `${skipped ? ` ${skipped} skipped.` : ''}`
+  );
+
+  nav('library');
 }
 
 /* events */
