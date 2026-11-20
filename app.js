@@ -752,6 +752,15 @@ async function createAccount() {
 
 $('#signInBtn').onclick = signIn;
 $('#createAccountBtn').onclick = createAccount;
+$('#signOutBtn').onclick = async () => {
+  if (!confirm('Are you sure you want to sign out?')) return;
+
+  const { error } = await supabaseClient.auth.signOut();
+
+  if (error) {
+    alert('Could not sign out: ' + error.message);
+  }
+};
 
 $('#authPassword').addEventListener('keydown', e => {
   if (e.key === 'Enter') signIn();
