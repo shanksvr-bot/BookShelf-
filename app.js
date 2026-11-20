@@ -427,6 +427,109 @@ function addSelectedShelf(){
   nav('library');
 }
 
+/* ---------- Supabase account login ---------- */
+function showAuthStatus(message, isError=false) {
+  const status = document.querySelector('#authStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.style.color = isError ? '#a33' : '#68727a';
+}
+
+function showAppAfterLogin() {
+  document.body.classList.remove('auth-locked');
+  document.querySelectorAll('.screen').forEach(x => x.classList.remove('active'));
+  $('#home').classList.add('active');
+  $$('nav button').forEach(x => x.classList.toggle('active', x.dataset.nav === 'home'));
+  renderAll();
+}
+
+function showLoginScreen() {
+  document.body.classList.add('auth-locked');
+  document.querySelectorAll('.screen').forEach(x => x.classList.remove('active'));
+  $('#auth').classList.add('active');
+}
+
+async function signIn() {
+  const email = $('#authEmail').value.trim();
+  const password = $('#authPassword').value;
+
+  if (!email || !password) {
+    showAuthStatus('Enter your email and password.', true);
+    return;
+  }
+
+  $('#signInBtn').disabled = true;
+  showAuthStatus('Signing in…');
+
+  try {
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    showAppAfterLogin();
+    showAuthStatus('');
+  } catch (error) {
+    showAuthStatus(error.message || 'Could not sign in.', true);
+  } finally {
+    $('#signInBtn').disabled = false;
+  }
+}
+
+async function createAccount() {
+  const email = $('#authEmail').value.trim();
+  const password = $('#authPassword').value;
+
+  if (!email || !password) {
+    showAuthStatus('Enter your email and password to create your account.', true);
+    return;
+  }
+
+  if (password.length < 6) {
+    showAuthStatus('Use a password with at least 6 characters.', true);
+    return;
+  }
+
+  $('#createAccountBtn').disabled = true;
+  showAuthStatus('Creating your account…');
+
+  try {
+    const { data, error } = await supabaseClient.auth.signUp({ email, password });
+    if (error) throw error;
+
+    if (data.session) {
+      showAppAfterLogin();
+      showAuthStatus('');
+    } else {
+      showAuthStatus('Account created. Check your email for the confirmation link, then return here and sign in.');
+    }
+  } catch (error) {
+    showAuthStatus(error.message || 'Could not create your account.', true);
+  } finally {
+    $('#createAccountBtn').disabled = false;
+  }
+}
+
+$('#signInBtn').onclick = signIn;
+$('#createAccountBtn').onclick = createAccount;
+
+$('#authPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') signIn();
+});
+
+document.body.classList.add('auth-locked');
+showLoginScreen();
+
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if (session) showAppAfterLogin();
+  else if (event === 'SIGNED_OUT') showLoginScreen();
+});
+
+supabaseClient.auth.getSession().then(({ data, error }) => {
+  if (error) {
+    showAuthStatus(error.message, true);
+    return;
+  }
+  if (data.session) showAppAfterLogin();
+  else showLoginScreen();
+});
 /* events */
 $$('nav button').forEach(b=>b.onclick=()=>b.dataset.nav==='scan'?startCamera():nav(b.dataset.nav));
 $('#scanHome').onclick=startCamera;$('#scanLib').onclick=startCamera;
