@@ -2,6 +2,69 @@ const SUPABASE_URL='https://msyzkbeqmifdxoztsymd.supabase.co';
 const SUPABASE_ANON_KEY='sb_publishable_7_5SW6vnp7CfY4FBahMtvA_Ku44atcG';
 const supabaseClient=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 
+// LIVE SYNC BETWEEN DEVICES
+let booksChannel = null;
+let realtimeRefreshTimer = null;
+
+async function startRealtimeSync(user) {
+  if (booksChannel) {
+    await supabaseClient.removeChannel(booksChannel);
+    booksChannel = null;
+  }
+
+  booksChannel = supabaseClient
+    .channel('books-live-sync')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'books',
+        filter: `user_id=eq.${user.id}`
+      },
+      () => {
+        clearTimeout(realtimeRefreshTimer);
+
+        realtimeRefreshTimer = setTimeout(async () => {
+          const { data, error } = await supabaseClient
+            .from('books')
+            .select('*')
+            .eq('user_id', user.id);
+
+          if (error) {
+            console.error('Live sync error:', error);
+            return;
+          }
+
+          books = data.map(book => ({
+            id: book.local_id || book.id,
+            cloudId: book.id,
+            isbn: book.isbn,
+            title: book.title,
+            author: book.author,
+            cover: book.cover,
+            publisher: book.publisher,
+            year: book.year,
+            description: book.description,
+            status: book.status,
+            added: book.added,
+            store: book.store,
+            price: book.price,
+            notes: book.notes
+          }));
+
+          localStorage.setItem(KEY, JSON.stringify(books));
+          renderAll();
+
+          console.log('Live library sync complete');
+        }, 300);
+      }
+    )
+    .subscribe((status) => {
+      console.log('Live sync status:', status);
+    });
+}
+
 const KEY='bookshelf_books_v1';
 let books=JSON.parse(localStorage.getItem(KEY)||'[]');
 let currentFilter='all';
@@ -571,7 +634,7 @@ async function showAppAfterLogin() {
     }));
 
     localStorage.setItem(KEY, JSON.stringify(books));
-
+    startRealtimeSync(user);
     document.body.classList.remove('auth-locked');
     document.querySelectorAll('.screen').forEach(x => x.classList.remove('active'));
     $('#home').classList.add('active');
