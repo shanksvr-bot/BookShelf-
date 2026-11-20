@@ -111,13 +111,7 @@ async function save(){
   }, 800);
 }
 
-      console.log('Cloud save successful');
-
-    } catch(error) {
-      console.error('Cloud save failed:', error);
-    }
-  }, 800);
-}
+ 
 function nav(id){
   $$('.screen').forEach(x=>x.classList.remove('active'));
   $('#'+id).classList.add('active');
