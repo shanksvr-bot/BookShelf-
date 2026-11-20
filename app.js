@@ -63,7 +63,7 @@ async function googleBooks(q){
 }
 function gbToBook(item,ocr=''){
   const v=item.volumeInfo||{},ids=v.industryIdentifiers||[],isbn=(ids.find(x=>x.type==='ISBN_13')||ids.find(x=>x.type==='ISBN_10')||{}).identifier||'';
-  return {isbn:normalizeISBN(isbn),title:v.title||'',author:(v.authors||[]).join(', '),cover:v.imageLinks?.thumbnail||v.imageLinks?.smallThumbnail||'',publisher:v.publisher||'',year:v.publishedDate||'',description:v.description||'',ocr};
+  return {isbn:normalizeISBN(isbn),title:v.title||'',author:(v.authors||[]).join(', '),cover:(v.imageLinks?.thumbnail||v.imageLinks?.smallThumbnail||'').replace(/^http:/,'https:')||v.imageLinks?.smallThumbnail||'',publisher:v.publisher||'',year:v.publishedDate||'',description:v.description||'',ocr};
 }
 async function lookup(isbn,statusChoice='Owned'){
   isbn=cleanISBN(isbn);if(isbn.length!==10&&isbn.length!==13){alert('Please enter a valid ISBN-10 or ISBN-13.');return}
