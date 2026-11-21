@@ -337,3 +337,15 @@ nav button.active {
 nav button.active span {
   color: #244b3f !important;
 }
+
+nav button.active {
+  color: #244b3f !important;
+  font-weight: 800 !important;
+  background: #ebe6da !important;
+  border-radius: 14px;
+  margin: 6px;
+}
+
+nav button.active span {
+  color: #244b3f !important;
+}
