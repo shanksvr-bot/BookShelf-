@@ -508,21 +508,133 @@ async function identifySpines(base){
   return results;
 }
 async function searchShelfText(raw){
-  const words=raw.split(/\s+/).filter(w=>w.length>2);
-  const queries=[];
-  if(words.length>=2)queries.push(words.slice(0,7).join(' '));
-  if(words.length>7)queries.push(words.slice(-7).join(' '));
-  let items=[];
-  for(const q of queries){try{items.push(...await googleBooks(q))}catch(e){}}
-  const unique=[];const seen=new Set();
-  for(const it of items){const id=it.id||JSON.stringify(it.volumeInfo);if(!seen.has(id)){seen.add(id);unique.push(it)}}
-  unique.sort((a,b)=>{
-    const av=a.volumeInfo||{},bv=b.volumeInfo||{};
-    const as=scoreText(raw,(av.title||'')+' '+(av.authors||[]).join(' ')),bs=scoreText(raw,(bv.title||'')+' '+(bv.authors||[]).join(' '));return bs-as
-  });
-  return unique.slice(0,4).map(it=>gbToBook(it,raw));
-}
+  const words = raw.split(/\s+/).filter(w => w.length > 2);
+  const queries = [];
 
+  if (words.length >= 2) {
+    queries.push(words.slice(0, 7).join(' '));
+  }
+
+  if (words.length > 7) {
+    queries.push(words.slice(-7).join(' '));
+  }
+
+  let items = [];
+
+  // Try Google Books first
+  for (const q of queries) {
+    try {
+      items.push(...await googleBooks(q));
+    } catch (e) {
+      console.warn('Google Books Shelf Scan search failed:', e);
+    }
+  }
+
+  const unique = [];
+  const seen = new Set();
+
+  for (const it of items) {
+    const id = it.id || JSON.stringify(it.volumeInfo);
+
+    if (!seen.has(id)) {
+      seen.add(id);
+      unique.push(it);
+    }
+  }
+
+  unique.sort((a, b) => {
+    const av = a.volumeInfo || {};
+    const bv = b.volumeInfo || {};
+
+    const as = scoreText(
+      raw,
+      (av.title || '') + ' ' + (av.authors || []).join(' ')
+    );
+
+    const bs = scoreText(
+      raw,
+      (bv.title || '') + ' ' + (bv.authors || []).join(' ')
+    );
+
+    return bs - as;
+  });
+
+  const results = unique
+    .slice(0, 4)
+    .map(it => gbToBook(it, raw));
+
+  // If Google Books gave us a match with a cover, use it.
+  if (results.some(b => b.cover)) {
+    return results;
+  }
+
+  // Google Books found no usable cover.
+  // Try Open Library using the title/author text.
+  try {
+    const searchUrl =
+      'https://openlibrary.org/search.json?q=' +
+      encodeURIComponent(raw) +
+      '&limit=5';
+
+    const response = await fetch(searchUrl);
+
+    if (response.ok) {
+      const data = await response.json();
+
+      const match = data.docs?.find(item =>
+        item.cover_i ||
+        item.isbn?.length
+      );
+
+      if (match) {
+        let isbn = '';
+
+        if (Array.isArray(match.isbn)) {
+          isbn =
+            match.isbn.find(x => String(x).length === 13) ||
+            match.isbn[0] ||
+            '';
+        }
+
+        const title = match.title || '';
+        const author = Array.isArray(match.author_name)
+          ? match.author_name.join(', ')
+          : '';
+
+        let cover = '';
+
+        if (match.cover_i) {
+          cover =
+            `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg`;
+        } else if (isbn) {
+          cover =
+            `https://covers.openlibrary.org/b/isbn/${normalizeISBN(isbn)}-L.jpg`;
+        }
+
+        if (title || author || cover) {
+          return [{
+            isbn: normalizeISBN(isbn),
+            title,
+            author,
+            cover,
+            publisher: Array.isArray(match.publisher)
+              ? match.publisher[0] || ''
+              : '',
+            year: match.first_publish_year
+              ? String(match.first_publish_year)
+              : '',
+            description: '',
+            raw
+          }];
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Open Library Shelf Scan fallback failed:', e);
+  }
+
+  return results;
+}
 async function shelfProcess(file) {
   $('#shelfWork').classList.remove('hidden');
   $('#shelfResults').innerHTML = '';
