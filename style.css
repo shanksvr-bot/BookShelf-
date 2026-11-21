@@ -328,3 +328,12 @@ button {
 .card {
   border-radius: 16px;
 }
+
+nav button.active {
+  color: #244b3f !important;
+  font-weight: 800;
+}
+
+nav button.active span {
+  color: #244b3f !important;
+}
