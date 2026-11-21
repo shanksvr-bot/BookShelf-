@@ -403,3 +403,66 @@ nav button.active {
 nav button.active span {
   color: #244b3f !important;
 }
+
+/* SETTINGS SCREEN */
+
+.settingsSection {
+  margin: 24px 0;
+}
+
+.settingsSection h2 {
+  font-size: 14px;
+  color: #68756b;
+  margin: 0 0 10px 4px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+}
+
+.settingsCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  padding: 17px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}
+
+.settingsIcon {
+  font-size: 25px;
+  width: 38px;
+  text-align: center;
+}
+
+.settingsCard b {
+  display: block;
+  font-size: 15px;
+  color: #26352c;
+}
+
+.settingsCard p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  color: #777;
+}
+
+.settingsComingSoon {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #52745c;
+  background: #e9f0e9;
+  padding: 4px 9px;
+  border-radius: 20px;
+}
+
+.settingsSignOut {
+  width: 100%;
+  padding: 15px;
+  border-radius: 12px;
+  background: #fff;
+  color: #a34b43;
+  font-weight: 600;
+  font-size: 15px;
+  text-align: left;
+}
