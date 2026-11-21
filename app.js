@@ -149,7 +149,7 @@ async function save(){
         remoteBooks.some(remote => remote.id === row.id)
       ).length;
 
-      if (remoteBooks.length > 0 && matchedCount !== books.length) {
+      if (remoteBooks.length > 0 && matchedCount < remoteBooks.length) {
         throw new Error(
           'Only ' + matchedCount + ' of ' + books.length +
           ' books matched. No cloud changes were made.'
