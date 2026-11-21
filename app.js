@@ -220,9 +220,94 @@ function renderAll(){
   $('#wantList').innerHTML=books.filter(b=>b.status==='Want to Buy').map(card).join('')||`<div class="empty"><b>No books on your list</b><span>Scan a book and add it to Want to Buy.</span></div>`;
 }
 function renderLibrary(){
-  let q=($('#search')?.value||'').toLowerCase(),map={owned:'Owned',want:'Want to Buy',read:'Read'};
-  let arr=books.filter(b=>currentFilter==='all'||b.status===map[currentFilter]).filter(b=>(b.title+' '+b.author+' '+b.isbn).toLowerCase().includes(q));
-  $('#libraryList').innerHTML=arr.length?arr.map(card).join(''):`<div class="empty"><b>No matching books</b><span>Try another search or scan a book.</span></div>`;
+  const list = $('#libraryList');
+  const sortKey = 'bookshelfSortOrder';
+
+  // Create the sorting dropdown if it doesn't already exist
+  let sortSelect = $('#librarySort');
+
+  if (!sortSelect) {
+    sortSelect = document.createElement('select');
+    sortSelect.id = 'librarySort';
+    sortSelect.className = 'librarySort';
+    sortSelect.setAttribute('aria-label', 'Sort library');
+
+    sortSelect.innerHTML = `
+      <option value="addedDesc">Date Added – Newest First</option>
+      <option value="addedAsc">Date Added – Oldest First</option>
+      <option value="titleAsc">Title – A to Z</option>
+      <option value="titleDesc">Title – Z to A</option>
+      <option value="authorAsc">Author – A to Z</option>
+      <option value="authorDesc">Author – Z to A</option>
+      <option value="yearDesc">Publication Year – Newest First</option>
+      <option value="yearAsc">Publication Year – Oldest First</option>
+    `;
+
+    sortSelect.style.cssText =
+      'display:block;width:100%;max-width:280px;margin:0 0 12px;padding:10px;border-radius:8px;';
+
+    list.parentNode.insertBefore(sortSelect, list);
+
+    sortSelect.addEventListener('change', () => {
+      localStorage.setItem(sortKey, sortSelect.value);
+      renderLibrary();
+    });
+  }
+
+  // Restore saved sorting preference
+  sortSelect.value = localStorage.getItem(sortKey) || 'addedDesc';
+
+  let q = ($('#search')?.value || '').toLowerCase();
+  let map = {owned:'Owned',want:'Want to Buy',read:'Read'};
+
+  let arr = books
+    .filter(b => currentFilter === 'all' || b.status === map[currentFilter])
+    .filter(b => (b.title + ' ' + b.author + ' ' + b.isbn).toLowerCase().includes(q));
+
+  // Sort books
+  const compareText = (a, b) =>
+    String(a || '').localeCompare(String(b || ''), undefined, {
+      sensitivity: 'base',
+      numeric: true
+    });
+
+  switch (sortSelect.value) {
+    case 'titleAsc':
+      arr.sort((a,b) => compareText(a.title,b.title));
+      break;
+
+    case 'titleDesc':
+      arr.sort((a,b) => compareText(b.title,a.title));
+      break;
+
+    case 'authorAsc':
+      arr.sort((a,b) => compareText(a.author,b.author));
+      break;
+
+    case 'authorDesc':
+      arr.sort((a,b) => compareText(b.author,a.author));
+      break;
+
+    case 'addedAsc':
+      arr.sort((a,b) => Number(a.added || 0) - Number(b.added || 0));
+      break;
+
+    case 'addedDesc':
+      arr.sort((a,b) => Number(b.added || 0) - Number(a.added || 0));
+      break;
+
+    case 'yearAsc':
+      arr.sort((a,b) => Number(a.year || 0) - Number(b.year || 0));
+      break;
+
+    case 'yearDesc':
+      arr.sort((a,b) => Number(b.year || 0) - Number(a.year || 0));
+      break;
+  }
+
+  list.innerHTML = arr.length
+    ? arr.map(card).join('')
+    : `<div class="empty"><b>No matching books</b><span>Try another search or scan a book.</span></div>`;
 }
 function showDetails(id){
   let b=books.find(x=>x.id===id);if(!b)return;
