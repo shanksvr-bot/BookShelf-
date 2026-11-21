@@ -831,4 +831,82 @@ $$('.stats button').forEach(b=>b.onclick=()=>{currentFilter=b.dataset.filter;nav
 renderAll();
 
 
+async function recoverMissingCovers() {
+  console.log('Starting cover recovery...');
+
+  const { data: sessionData } =
+    await supabaseClient.auth.getSession();
+
+  const user = sessionData.session?.user;
+
+  if (!user) {
+    console.error('You must be logged in.');
+    return;
+  }
+
+  const { data: missingBooks, error } = await supabaseClient
+    .from('books')
+    .select('id, title, author, cover')
+    .eq('user_id', user.id)
+    .is('cover', null);
+
+  if (error) {
+    console.error('Could not load books:', error);
+    return;
+  }
+
+  console.log('Books needing covers:', missingBooks.length);
+
+  let updated = 0;
+
+  for (const book of missingBooks) {
+    try {
+      const url =
+        'https://openlibrary.org/search.json?title=' +
+        encodeURIComponent(book.title) +
+        '&author=' +
+        encodeURIComponent(book.author || '') +
+        '&limit=5';
+
+      const response = await fetch(url);
+      if (!response.ok) continue;
+
+      const results = await response.json();
+
+      const match = results.docs?.find(item => item.cover_i);
+
+      if (!match) {
+        console.log('No cover found:', book.title);
+        continue;
+      }
+
+      const coverUrl =
+        `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg`;
+
+      const { error: updateError } = await supabaseClient
+        .from('books')
+        .update({ cover: coverUrl })
+        .eq('id', book.id)
+        .eq('user_id', user.id)
+        .is('cover', null);
+
+      if (updateError) {
+        console.error('Update failed:', book.title, updateError);
+        continue;
+      }
+
+      updated++;
+      console.log('Cover saved:', book.title);
+
+      // Avoid sending requests too quickly
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+    } catch (err) {
+      console.error('Cover lookup failed:', book.title, err);
+    }
+  }
+
+  console.log(`Cover recovery finished. Updated ${updated} books.`);
+}
+
 
