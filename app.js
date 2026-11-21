@@ -290,23 +290,127 @@ function gbToBook(item,ocr=''){
   return {isbn:normalizeISBN(isbn),title:v.title||'',author:(v.authors||[]).join(', '),cover:(v.imageLinks?.thumbnail||v.imageLinks?.smallThumbnail||'').replace(/^http:/,'https:')||v.imageLinks?.smallThumbnail||'',publisher:v.publisher||'',year:v.publishedDate||'',description:v.description||'',ocr};
 }
 async function lookup(isbn,statusChoice='Owned'){
-  isbn=cleanISBN(isbn);if(isbn.length!==10&&isbn.length!==13){alert('Please enter a valid ISBN-10 or ISBN-13.');return}
-  let normalized=normalizeISBN(isbn),existing=isDuplicate(normalized,'','');
-  if(existing){await stopCamera();showDetails(existing.id);alert(existing.status==='Owned'?'You already have this book in your library.':'This book is already on your Want to Buy list.');return}
+  isbn=cleanISBN(isbn);
+
+  if(isbn.length!==10&&isbn.length!==13){
+    alert('Please enter a valid ISBN-10 or ISBN-13.');
+    return;
+  }
+
+  let normalized=normalizeISBN(isbn);
+  let existing=isDuplicate(normalized,'','');
+
+  if(existing){
+    await stopCamera();
+    showDetails(existing.id);
+    alert(existing.status==='Owned'
+      ?'You already have this book in your library.'
+      :'This book is already on your Want to Buy list.');
+    return;
+  }
+
   $('#scanMsg').textContent='ISBN confirmed — looking up book…';
+
   try{
-    let item=(await googleBooks('isbn:'+normalized))[0];
-    if(!item){
-      let r=await fetch('https://openlibrary.org/isbn/'+encodeURIComponent(isbn)+'.json');
-      if(!r.ok)throw new Error('Book not found');
-      let d=await r.json(),desc='',works=d.works?.[0]?.key;
-      if(works)try{let wd=await(await fetch('https://openlibrary.org'+works+'.json')).json();desc=typeof wd.description==='string'?wd.description:(wd.description?.value||'')}catch(e){}
-      let b={id:crypto.randomUUID(),isbn:normalized,title:d.title||'Unknown title',author:(d.authors||[]).map(a=>a.name||'').filter(Boolean).join(', '),cover:`https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg`,publisher:(d.publishers||[])[0]||'',year:d.publish_date||'',description:desc,status:statusChoice,added:Date.now(),store:'',price:'',notes:''};
-      books.unshift(b);save();await stopCamera();showDetails(b.id);return;
+    let item=null;
+
+    // Try Google Books first
+    try{
+      let results=await googleBooks('isbn:'+normalized);
+      item=results[0]||null;
+    }catch(googleError){
+      console.warn('Google Books unavailable. Trying Open Library.',googleError);
     }
-    let b=gbToBook(item);b.id=crypto.randomUUID();b.status=statusChoice;b.added=Date.now();b.store='';b.price='';b.notes='';
-    books.unshift(b);save();await stopCamera();showDetails(b.id);
-  }catch(e){$('#scanMsg').textContent='Book not found. Try another angle or enter the ISBN manually.';alert('I could not find that ISBN. Try the manual ISBN field or another edition.')}
+
+    let b;
+
+    // Use Open Library if Google Books did not return a book
+    if(!item){
+      let r=await fetch(
+        'https://openlibrary.org/isbn/'+encodeURIComponent(normalized)+'.json'
+      );
+
+      if(!r.ok)throw new Error('Book not found');
+
+      let d=await r.json();
+      let desc='';
+      let works=d.works?.[0]?.key;
+
+      if(works){
+        try{
+          let wd=await(await fetch('https://openlibrary.org'+works+'.json')).json();
+          desc=typeof wd.description==='string'
+            ?wd.description
+            :(wd.description?.value||'');
+        }catch(e){}
+      }
+
+      b={
+        id:crypto.randomUUID(),
+        isbn:normalized,
+        title:d.title||'Unknown title',
+        author:(d.authors||[]).map(a=>a.name||'').filter(Boolean).join(','),
+        cover:`https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg`,
+        publisher:(d.publishers||[])[0]||'',
+        year:d.publish_date||'',
+        description:desc,
+        status:statusChoice,
+        added:Date.now(),
+        store:'',
+        price:'',
+        notes:''
+      };
+
+    }else{
+      b=gbToBook(item);
+      b.id=crypto.randomUUID();
+      b.status=statusChoice;
+      b.added=Date.now();
+      b.store='';
+      b.price='';
+      b.notes='';
+    }
+
+    // Upload the cover to Supabase Storage
+    if(b.cover){
+      $('#scanMsg').textContent='Saving book cover to your library…';
+
+      try{
+        const {data,error}=await supabaseClient.functions.invoke(
+          'import-book-cover',
+          {
+            body:{
+              coverUrl:b.cover
+            }
+          }
+        );
+
+        if(error)throw error;
+
+        if(!data?.success||!data.cover){
+          throw new Error(data?.error||'Cover upload failed');
+        }
+
+        b.cover=data.cover;
+
+        console.log('Book cover saved to Supabase:',b.cover);
+
+      }catch(coverError){
+        console.error('Could not upload book cover:',coverError);
+      }
+    }
+
+    books.unshift(b);
+    save();
+
+    await stopCamera();
+    showDetails(b.id);
+
+  }catch(e){
+    console.error('Book lookup failed:',e);
+    $('#scanMsg').textContent='Book not found. Try another angle or enter the ISBN manually.';
+    alert('I could not find that ISBN. Try the manual ISBN field or another edition.');
+  }
 }
 function resetCandidate(){candidateISBN='';candidateHits=0;candidateSince=0}
 async function startCamera(){
