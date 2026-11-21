@@ -854,11 +854,10 @@ async function recoverMissingCovers() {
     return;
   }
 
-  // TEMPORARY TEST: Only process 1776 first.
-  const booksToProcess = allBooks.filter(book =>
-    book.title?.toLowerCase() === '1776' &&
-    (!book.cover || book.cover.includes('openlibrary.org'))
-  );
+ // Process every book that needs a cover migration.
+const booksToProcess = allBooks.filter(book =>
+  !book.cover || book.cover.includes('openlibrary.org')
+);
 
   console.log('Books to migrate:', booksToProcess.length);
 
