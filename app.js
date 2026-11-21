@@ -1141,6 +1141,226 @@ supabaseClient.auth.getSession().then(({ data, error }) => {
   if (data.session) showAppAfterLogin();
   else showLoginScreen();
 });
+
+/* ---------- LIBRARY SHARING ---------- */
+
+async function getCurrentUser() {
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) throw error;
+  return data.session?.user;
+}
+
+async function loadSharing() {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  const incoming = $('#incomingInvitations');
+  const shared = $('#sharedWithMe');
+  const outgoing = $('#myShares');
+
+  incoming.innerHTML = '<p>Loading...</p>';
+  shared.innerHTML = '<p>Loading...</p>';
+  outgoing.innerHTML = '<p>Loading...</p>';
+
+  try {
+    const { data: invitations, error: inviteError } =
+      await supabaseClient
+        .from('library_shares')
+        .select('*')
+        .eq('shared_with_id', user.id)
+        .eq('status', 'pending');
+
+    if (inviteError) throw inviteError;
+
+    incoming.innerHTML = invitations.length
+      ? invitations.map(s => `
+          <div class="settingsCard">
+            <div>
+              <b>${esc(s.owner_email || 'BookShelf user')}</b>
+              <p>Invited you to view their library.</p>
+              <button class="primary" onclick="acceptLibraryInvite('${s.id}')">
+                Accept Invitation
+              </button>
+            </div>
+          </div>
+        `).join('')
+      : '<p>No pending invitations.</p>';
+
+    const { data: accepted, error: acceptedError } =
+      await supabaseClient
+        .from('library_shares')
+        .select('*')
+        .eq('shared_with_id', user.id)
+        .eq('status', 'accepted');
+
+    if (acceptedError) throw acceptedError;
+
+    shared.innerHTML = accepted.length
+      ? accepted.map(s => `
+          <div class="settingsCard">
+            <div>
+              <b>${esc(s.owner_email || 'BookShelf user')}</b>
+              <p>Shared library</p>
+              <button class="primary"
+                onclick="viewSharedLibrary('${s.owner_id}')">
+                View Library
+              </button>
+            </div>
+          </div>
+        `).join('')
+      : '<p>No libraries are currently shared with you.</p>';
+
+    const { data: outgoingShares, error: outgoingError } =
+      await supabaseClient
+        .from('library_shares')
+        .select('*')
+        .eq('owner_id', user.id);
+
+    if (outgoingError) throw outgoingError;
+
+    outgoing.innerHTML = outgoingShares.length
+      ? outgoingShares.map(s => `
+          <div class="settingsCard">
+            <div>
+              <b>${esc(s.shared_with_email || 'BookShelf user')}</b>
+              <p>Status: ${esc(s.status)}</p>
+              <button class="settingsSignOut"
+                onclick="revokeLibraryShare('${s.id}')">
+                Revoke Access
+              </button>
+            </div>
+          </div>
+        `).join('')
+      : '<p>You have not shared your library with anyone yet.</p>';
+
+  } catch (error) {
+    console.error('Sharing load failed:', error);
+    incoming.innerHTML = '<p>Could not load sharing information.</p>';
+    shared.innerHTML = '';
+    outgoing.innerHTML = '';
+  }
+}
+
+async function sendLibraryInvite() {
+  const email = $('#inviteEmail').value.trim();
+  const status = $('#inviteStatus');
+
+  if (!email) {
+    status.textContent = 'Enter an email address first.';
+    return;
+  }
+
+  status.textContent = 'Sending invitation...';
+
+  try {
+    const { error } = await supabaseClient.rpc(
+      'invite_library_user',
+      { invitee_email: email }
+    );
+
+    if (error) throw error;
+
+    status.textContent = 'Invitation sent successfully!';
+    $('#inviteEmail').value = '';
+
+    await loadSharing();
+
+  } catch (error) {
+    console.error('Invitation failed:', error);
+    status.textContent = error.message || 'Could not send invitation.';
+  }
+}
+
+async function acceptLibraryInvite(shareId) {
+  try {
+    const { error } = await supabaseClient.rpc(
+      'accept_library_invitation',
+      { share_id: shareId }
+    );
+
+    if (error) throw error;
+
+    alert('Invitation accepted!');
+    await loadSharing();
+
+  } catch (error) {
+    console.error('Accept invitation failed:', error);
+    alert(error.message || 'Could not accept invitation.');
+  }
+}
+
+async function revokeLibraryShare(shareId) {
+  if (!confirm('Revoke this person's access to your library?')) return;
+
+  try {
+    const { error } = await supabaseClient
+      .from('library_shares')
+      .delete()
+      .eq('id', shareId);
+
+    if (error) throw error;
+
+    alert('Library access revoked.');
+    await loadSharing();
+
+  } catch (error) {
+    console.error('Revoke sharing failed:', error);
+    alert(error.message || 'Could not revoke access.');
+  }
+}
+
+async function viewSharedLibrary(ownerId) {
+  const container = $('#sharedWithMe');
+
+  container.innerHTML = '<p>Loading shared books...</p>';
+
+  try {
+    const { data: sharedBooks, error } = await supabaseClient
+      .from('books')
+      .select('*')
+      .eq('user_id', ownerId);
+
+    if (error) throw error;
+
+    let html = `
+      <button class="secondary" onclick="loadSharing()">
+        ‹ Back to Shared Libraries
+      </button>
+      <div class="bookGrid" style="margin-top:15px">
+    `;
+
+    if (!sharedBooks.length) {
+      html += '<p>This library is currently empty.</p>';
+    }
+
+    sharedBooks.forEach(book => {
+      html += `
+        <article class="book">
+          ${book.cover
+            ? `<img class="cover" src="${esc(book.cover)}" alt="${esc(book.title)} cover">`
+            : `<div class="cover noCover">No cover image</div>`
+          }
+          <div class="bookInfo">
+            <div class="bookTitle">${esc(book.title)}</div>
+            <div class="author">${esc(book.author || 'Unknown author')}</div>
+            <span class="badge">${esc(book.status || 'Owned')}</span>
+          </div>
+        </article>
+      `;
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+
+  } catch (error) {
+    console.error('Shared library load failed:', error);
+    container.innerHTML =
+      '<p>Could not load this shared library. Access may have been revoked.</p>';
+  }
+}
+
+
+
 /* events */
 
 // SETTINGS NAVIGATION
@@ -1151,6 +1371,18 @@ $('#settingsBtn').onclick = () => {
 $('#settingsBackBtn').onclick = () => {
   nav('home');
 };
+
+// LIBRARY SHARING NAVIGATION
+$('#manageSharingBtn').onclick = () => {
+  nav('sharing');
+  loadSharing();
+};
+
+$('#sharingBackBtn').onclick = () => {
+  nav('settings');
+};
+
+$('#sendInviteBtn').onclick = sendLibraryInvite;
 $$('nav button').forEach(b=>b.onclick=()=>b.dataset.nav==='scan'?startCamera():nav(b.dataset.nav));
 $('#scanHome').onclick=startCamera;$('#scanLib').onclick=startCamera;
 $('#shelfHome').onclick=()=>nav('shelf');$('#shelfLib').onclick=()=>nav('shelf');
