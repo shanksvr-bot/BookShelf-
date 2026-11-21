@@ -1336,7 +1336,7 @@ async function viewSharedLibrary(ownerId) {
         style="width:100%;padding:12px;margin:15px 0;border-radius:8px;box-sizing:border-box;"
       >
 
-      <div id="sharedBookResults" class="bookGrid"></div>
+      <div id="sharedBookResults" class="bookgrid"></div>
     `;
 
     const searchInput = $('#sharedLibrarySearch');
