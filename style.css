@@ -165,8 +165,8 @@ header {
 
 .bookgrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .book {
@@ -200,12 +200,12 @@ header {
 }
 
 .bookInfo {
-  padding: 13px;
+  padding: 8px;
 }
 
 .bookTitle {
   font-weight: 800;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.35;
   color: #26352f;
 }
