@@ -832,7 +832,7 @@ renderAll();
 
 
 async function recoverMissingCovers() {
-  console.log('Starting cover recovery...');
+  console.log('Starting Supabase cover migration...');
 
   const { data: sessionData } =
     await supabaseClient.auth.getSession();
@@ -844,68 +844,97 @@ async function recoverMissingCovers() {
     return;
   }
 
-  const { data: missingBooks, error } = await supabaseClient
+  const { data: allBooks, error } = await supabaseClient
     .from('books')
     .select('id, title, author, cover')
-    .eq('user_id', user.id)
-    .is('cover', null);
+    .eq('user_id', user.id);
 
   if (error) {
     console.error('Could not load books:', error);
     return;
   }
 
-  console.log('Books needing covers:', missingBooks.length);
+  // TEMPORARY TEST: Only process 1776 first.
+  const booksToProcess = allBooks.filter(book =>
+    book.title?.toLowerCase() === '1776' &&
+    (!book.cover || book.cover.includes('openlibrary.org'))
+  );
+
+  console.log('Books to migrate:', booksToProcess.length);
 
   let updated = 0;
 
-  for (const book of missingBooks) {
+  for (const book of booksToProcess) {
     try {
-      const url =
-        'https://openlibrary.org/search.json?title=' +
-        encodeURIComponent(book.title) +
-        '&author=' +
-        encodeURIComponent(book.author || '') +
-        '&limit=5';
+      let coverUrl = book.cover;
 
-      const response = await fetch(url);
-      if (!response.ok) continue;
+      if (!coverUrl) {
+        const searchUrl =
+          'https://openlibrary.org/search.json?title=' +
+          encodeURIComponent(book.title) +
+          '&author=' +
+          encodeURIComponent(book.author || '') +
+          '&limit=5';
 
-      const results = await response.json();
+        const response = await fetch(searchUrl);
 
-      const match = results.docs?.find(item => item.cover_i);
+        if (!response.ok) {
+          console.log('Search failed:', book.title);
+          continue;
+        }
 
-      if (!match) {
-        console.log('No cover found:', book.title);
+        const results = await response.json();
+        const match = results.docs?.find(item => item.cover_i);
+
+        if (!match) {
+          console.log('No cover found:', book.title);
+          continue;
+        }
+
+        coverUrl =
+          `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg`;
+      }
+
+      const { data, error: uploadError } =
+        await supabaseClient.functions.invoke(
+          'import-book-cover',
+          {
+            body: { coverUrl }
+          }
+        );
+
+      if (uploadError || !data?.success) {
+        console.error(
+          'Image upload failed:',
+          book.title,
+          uploadError || data?.error
+        );
         continue;
       }
 
-      const coverUrl =
-        `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg`;
-
       const { error: updateError } = await supabaseClient
         .from('books')
-        .update({ cover: coverUrl })
+        .update({ cover: data.cover })
         .eq('id', book.id)
-        .eq('user_id', user.id)
-        .is('cover', null);
+        .eq('user_id', user.id);
 
       if (updateError) {
-        console.error('Update failed:', book.title, updateError);
+        console.error('Database update failed:', updateError);
         continue;
       }
 
       updated++;
-      console.log('Cover saved:', book.title);
-
-      // Avoid sending requests too quickly
-      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('Supabase cover saved:', book.title);
 
     } catch (err) {
-      console.error('Cover lookup failed:', book.title, err);
+      console.error('Migration failed:', book.title, err);
     }
   }
 
+  console.log(`Migration finished. Updated ${updated} books.`);
+}
+
+window.recoverMissingCovers = recoverMissingCovers;
   console.log(`Cover recovery finished. Updated ${updated} books.`);
 }
 window.recoverMissingCovers = recoverMissingCovers;
