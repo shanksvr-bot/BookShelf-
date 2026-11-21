@@ -683,7 +683,8 @@ function selectAllShelf(v){shelfCandidates.forEach(x=>{if(!(x.existing&&x.existi
 function manualShelfSearch(i){
   const q=prompt('Enter the title or author for this book:',shelfCandidates[i].raw||'');if(!q)return;
   googleBooks(q).then(items=>{if(!items.length){alert('No matches found.');return}const b=gbToBook(items[0],shelfCandidates[i].raw);b.score=scoreText(shelfCandidates[i].raw,b.title+' '+b.author);b.existing=isDuplicate(b.isbn,b.title,b.author);b.selected=!b.existing;shelfCandidates[i]=b;renderShelfResults()}).catch(()=>alert('Book search failed.'))
-async function addSelectedShelf(){
+}
+  async function addSelectedShelf(){
   const selected = shelfCandidates.filter(b => b.selected === true);
 
   let added = 0;
