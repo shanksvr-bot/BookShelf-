@@ -49,7 +49,7 @@
       <h1>My Library</h1>
 <p><span id="bookCount">0</span> books in your collection</p>
 <p id="accountEmail" style="font-size:13px;opacity:.65;margin:4px 0 0;"></p>
-      <button id="signOutBtn" style="font-size:13px;color:#a34b43;padding:6px 0;margin-top:4px;">
+     
   Sign Out
 </button>
     </div>
@@ -73,13 +73,13 @@
 </main>
 
 <main id="library" class="screen">
-  <div class="pageHead">
-    <h1>My Library</h1>
-    <div class="headActions">
-      <button id="shelfLib" class="secondary small">📚 Shelf</button>
-      <button id="scanLib" class="smallPrimary">📷 Scan</button>
-    </div>
+ <div class="pageHead">
+  <h1>My Library</h1>
+  <div class="headActions">
+    <button id="shelfLib" class="secondary small">📚 Shelf</button>
+    <button id="scanLib" class="smallPrimary">📷 Scan</button>
   </div>
+</div>
 
   <div class="search">
     <span>🔎</span>
@@ -173,6 +173,7 @@
 </main>
 
 <main id="settings" class="screen">
+
   <div class="pageHead">
     <button id="settingsBackBtn" class="back">‹</button>
     <h1>Settings</h1>
@@ -191,18 +192,18 @@
   </div>
 
   <div class="settingsSection">
-  <h2>Sharing</h2>
-  <div class="settingsCard">
-    <div class="settingsIcon">📚</div>
-    <div>
-      <b>Library Sharing</b>
-      <p>Share your collection with other BookShelf users.</p>
-      <button id="manageSharingBtn" class="secondary small">
-        Manage Sharing
-      </button>
+    <h2>Sharing</h2>
+    <div class="settingsCard">
+      <div class="settingsIcon">📚</div>
+      <div>
+        <b>Library Sharing</b>
+        <p>Share your collection with other BookShelf users.</p>
+        <button id="manageSharingBtn" class="secondary small">
+          Manage Sharing
+        </button>
+      </div>
     </div>
   </div>
-</div>
 
   <div class="settingsSection">
     <h2>About</h2>
@@ -222,39 +223,57 @@
       Sign Out
     </button>
   </div>
+
 </main>
+
+<!-- LIBRARY SHARING SCREEN -->
+<main id="sharing" class="screen">
+
+  <div class="pageHead">
+    <button id="sharingBackBtn" class="back">‹</button>
+    <h1>Library Sharing</h1>
+    <span></span>
+  </div>
+
   <div class="settingsSection">
-    <h2>About</h2>
+    <h2>Share My Library</h2>
     <div class="settingsCard">
-      <div class="settingsIcon">ℹ️</div>
-      <div>
-        <b>About BookShelf</b>
-        <p>Your personal book catalog.</p>
-        <p>Version 1.0</p>
+      <div style="width:100%">
+        <p>Invite another BookShelf user by email address.</p>
+        <input id="inviteEmail" type="email"
+          placeholder="Enter their email address"
+          style="width:100%;padding:12px;margin:10px 0;border-radius:8px;">
+        <button id="sendInviteBtn" class="primary big">
+          Send Invitation
+        </button>
+        <p id="inviteStatus"></p>
       </div>
     </div>
   </div>
 
   <div class="settingsSection">
-    <h2>Account Actions</h2>
-    <button id="signOutBtn" class="settingsSignOut">
-      Sign Out
-    </button>
+    <h2>Invitations to Me</h2>
+    <div id="incomingInvitations"></div>
   </div>
+
+  <div class="settingsSection">
+    <h2>Libraries Shared With Me</h2>
+    <div id="sharedWithMe"></div>
+  </div>
+
+  <div class="settingsSection">
+    <h2>People Sharing My Library</h2>
+    <div id="myShares"></div>
+  </div>
+
 </main>
 
-<!-- INSERT THE NEW SHARING SCREEN HERE -->
-
-<nav>
-  
 <nav>
   <button data-nav="home" class="active">🏠<span>Home</span></button>
   <button data-nav="library">📚<span>Library</span></button>
   <button data-nav="scan">📷<span>Scan</span></button>
   <button data-nav="want">⭐<span>Want to Buy</span></button>
 </nav>
-
-</div>
 
 <script src="https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
