@@ -1290,7 +1290,7 @@ async function acceptLibraryInvite(shareId) {
 }
 
 async function revokeLibraryShare(shareId) {
-  if (!confirm('Revoke this person's access to your library?')) return;
+  if (!confirm("Revoke this person's access to your library?")) return;
 
   try {
     const { error } = await supabaseClient
