@@ -84,9 +84,61 @@ header {
   color: #788078;
   margin-top: 6px;
 }
-.sectionHead,.pageHead{display:flex;justify-content:space-between;align-items:center}.sectionHead h2,.pageHead h1{margin:0 0 14px}.sectionHead button{color:#2d5b50;font-weight:700}
-.pageHead{margin-bottom:16px}.pageHead h1{font-size:24px}.back{font-size:36px;line-height:20px}.smallPrimary,.secondary.small{border-radius:10px;padding:9px 12px;font-weight:700}.smallPrimary{background:#2d5b50;color:white}.secondary.small{padding:8px 10px}.headActions{display:flex;gap:7px}
-.search{display:flex;gap:8px;align-items:center;background:white;border-radius:12px;padding:11px 13px;margin-bottom:12px}.search input{border:0;outline:0;width:100%;background:transparent}
+.sectionHead,
+.pageHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sectionHead h2,
+.pageHead h1 {
+  margin: 0 0 14px;
+  color: #244b3f;
+}
+
+.sectionHead button {
+  color: #244b3f;
+  font-weight: 700;
+}
+
+.pageHead {
+  margin-bottom: 20px;
+  padding: 4px 0;
+}
+
+.pageHead h1 {
+  font-size: 25px;
+  font-weight: 800;
+}
+
+.back {
+  font-size: 36px;
+  line-height: 20px;
+  color: #244b3f;
+  padding: 4px 10px 4px 0;
+}
+
+.smallPrimary,
+.secondary.small {
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-weight: 700;
+}
+
+.smallPrimary {
+  background: #244b3f;
+  color: white;
+}
+
+.secondary.small {
+  padding: 8px 10px;
+}
+
+.headActions {
+  display: flex;
+  gap: 7px;
+}.search{display:flex;gap:8px;align-items:center;background:white;border-radius:12px;padding:11px 13px;margin-bottom:12px}.search input{border:0;outline:0;width:100%;background:transparent}
 .chips {
   display: flex;
   gap: 8px;
