@@ -771,6 +771,7 @@ function manualShelfSearch(i){
     books.unshift(newBook);
     added++;
   }
+    
 
   save();
 
