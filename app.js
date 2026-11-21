@@ -683,18 +683,18 @@ function selectAllShelf(v){shelfCandidates.forEach(x=>{if(!(x.existing&&x.existi
 function manualShelfSearch(i){
   const q=prompt('Enter the title or author for this book:',shelfCandidates[i].raw||'');if(!q)return;
   googleBooks(q).then(items=>{if(!items.length){alert('No matches found.');return}const b=gbToBook(items[0],shelfCandidates[i].raw);b.score=scoreText(shelfCandidates[i].raw,b.title+' '+b.author);b.existing=isDuplicate(b.isbn,b.title,b.author);b.selected=!b.existing;shelfCandidates[i]=b;renderShelfResults()}).catch(()=>alert('Book search failed.'))
-}
-function addSelectedShelf(){
+async function addSelectedShelf(){
   const selected = shelfCandidates.filter(b => b.selected === true);
 
   let added = 0;
   let moved = 0;
   let skipped = 0;
+  let coverUploads = 0;
 
-  selected.forEach(b => {
+  for (const b of selected) {
     if (!b.title || !String(b.title).trim()) {
       skipped++;
-      return;
+      continue;
     }
 
     const existing = isDuplicate(
@@ -715,7 +715,7 @@ function addSelectedShelf(){
         existing.added = Date.now();
         moved++;
       }
-      return;
+      continue;
     }
 
     const newBook = {
@@ -736,21 +736,52 @@ function addSelectedShelf(){
         : ''
     };
 
+    if (newBook.cover) {
+      setShelfStatus(`Saving cover for ${newBook.title}…`, 95);
+
+      try {
+        const { data, error } = await supabaseClient.functions.invoke(
+          'import-book-cover',
+          {
+            body: {
+              coverUrl: newBook.cover
+            }
+          }
+        );
+
+        if (error) throw error;
+
+        if (!data?.success || !data.cover) {
+          throw new Error(data?.error || 'Cover upload failed');
+        }
+
+        newBook.cover = data.cover;
+        coverUploads++;
+
+      } catch (coverError) {
+        console.error(
+          'Could not upload Shelf Scan cover:',
+          newBook.title,
+          coverError
+        );
+      }
+    }
+
     books.unshift(newBook);
     added++;
-  });
+  }
 
   save();
 
   alert(
     `${added} book${added === 1 ? '' : 's'} added to Owned.` +
     `${moved ? ` ${moved} existing book${moved === 1 ? '' : 's'} moved to Owned.` : ''}` +
-    `${skipped ? ` ${skipped} skipped.` : ''}`
+    `${skipped ? ` ${skipped} skipped.` : ''}` +
+    `${coverUploads ? ` ${coverUploads} cover${coverUploads === 1 ? '' : 's'} saved to Supabase.` : ''}`
   );
 
   nav('library');
 }
-
 /* ---------- Supabase account login ---------- */
 function showAuthStatus(message, isError=false) {
   const status = document.querySelector('#authStatus');
