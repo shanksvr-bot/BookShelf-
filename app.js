@@ -187,7 +187,30 @@ function counts(){
   $('#bookCount').textContent=books.length;$('#ownedCount').textContent=o;$('#wantCount').textContent=w;$('#readCount').textContent=r;
 }
 function card(b){
-  return `<article class="book" onclick="showDetails('${b.id}')">${b.cover?`<img class="cover" src="${esc(b.cover)}">`:`<div class="cover noCover">No cover image</div>`}<div class="bookInfo"><div class="bookTitle">${esc(b.title)}</div><div class="author">${esc(b.author||'Unknown author')}</div><span class="badge">${esc(b.status||'Owned')}</span></div></article>`;
+  let cover = b.cover || '';
+
+  if (cover) {
+    return `<article class="book" onclick="showDetails('${b.id}')">
+      <img class="cover"
+           src="${esc(cover)}"
+           alt="${esc(b.title)} cover"
+           onerror="this.onerror=null; this.src='https://covers.openlibrary.org/b/isbn/${esc(normalizeISBN(b.isbn || ''))}-L.jpg';">
+      <div class="bookInfo">
+        <div class="bookTitle">${esc(b.title)}</div>
+        <div class="author">${esc(b.author||'Unknown author')}</div>
+        <span class="badge">${esc(b.status||'Owned')}</span>
+      </div>
+    </article>`;
+  }
+
+  return `<article class="book" onclick="showDetails('${b.id}')">
+    <div class="cover noCover">No cover image</div>
+    <div class="bookInfo">
+      <div class="bookTitle">${esc(b.title)}</div>
+      <div class="author">${esc(b.author||'Unknown author')}</div>
+      <span class="badge">${esc(b.status||'Owned')}</span>
+    </div>
+  </article>`;
 }
 function renderAll(){
   counts();
