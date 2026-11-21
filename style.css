@@ -50,6 +50,10 @@ header {
 .screen{display:none;padding:20px 18px 110px}.screen.active{display:block}
 
 .primary{background:#2d5b50;color:white;border-radius:14px;font-weight:800}.primary.big,.secondary.big{width:100%;padding:18px;font-size:17px}
+#scanHome {
+  margin-bottom: 12px;
+  display: block;
+}
 .secondary{background:white;border:1px solid #ddd8d0;border-radius:14px;font-weight:800}
 .stats {
   display: grid;
