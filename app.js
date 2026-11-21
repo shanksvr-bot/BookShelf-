@@ -935,5 +935,4 @@ async function recoverMissingCovers() {
 }
 
 window.recoverMissingCovers = recoverMissingCovers;
- 
-
+}
