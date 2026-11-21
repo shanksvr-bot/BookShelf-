@@ -935,7 +935,5 @@ async function recoverMissingCovers() {
 }
 
 window.recoverMissingCovers = recoverMissingCovers;
-  console.log(`Cover recovery finished. Updated ${updated} books.`);
-}
-window.recoverMissingCovers = recoverMissingCovers;
+ 
 
