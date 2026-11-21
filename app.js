@@ -1000,6 +1000,7 @@ async function showAppAfterLogin() {
     if (!user) return;
     KEY = `bookshelf_books_${user.id}`;
 $('#accountEmail').textContent = user.email || 'Email unavailable';
+$('#settingsEmail').textContent = user.email || 'Email unavailable';
     books = [];
 
     const { data: cloudBooks, error } = await supabaseClient
@@ -1141,6 +1142,15 @@ supabaseClient.auth.getSession().then(({ data, error }) => {
   else showLoginScreen();
 });
 /* events */
+
+// SETTINGS NAVIGATION
+$('#settingsBtn').onclick = () => {
+  nav('settings');
+};
+
+$('#settingsBackBtn').onclick = () => {
+  nav('home');
+};
 $$('nav button').forEach(b=>b.onclick=()=>b.dataset.nav==='scan'?startCamera():nav(b.dataset.nav));
 $('#scanHome').onclick=startCamera;$('#scanLib').onclick=startCamera;
 $('#shelfHome').onclick=()=>nav('shelf');$('#shelfLib').onclick=()=>nav('shelf');
