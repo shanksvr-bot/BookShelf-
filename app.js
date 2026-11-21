@@ -1322,35 +1322,65 @@ async function viewSharedLibrary(ownerId) {
 
     if (error) throw error;
 
-    let html = `
+    const books = sharedBooks || [];
+
+    container.innerHTML = `
       <button class="secondary" onclick="loadSharing()">
         ‹ Back to Shared Libraries
       </button>
-      <div class="bookGrid" style="margin-top:15px">
+
+      <input
+        id="sharedLibrarySearch"
+        type="search"
+        placeholder="Search title, author, or ISBN..."
+        style="width:100%;padding:12px;margin:15px 0;border-radius:8px;box-sizing:border-box;"
+      >
+
+      <div id="sharedBookResults" class="bookGrid"></div>
     `;
 
-    if (!sharedBooks.length) {
-      html += '<p>This library is currently empty.</p>';
-    }
+    const searchInput = $('#sharedLibrarySearch');
+    const resultsContainer = $('#sharedBookResults');
 
-    sharedBooks.forEach(book => {
-      html += `
+    function renderSharedBooks(searchTerm = '') {
+      const term = searchTerm.toLowerCase().trim();
+
+      const filteredBooks = books.filter(book => {
+        return (
+          String(book.title || '').toLowerCase().includes(term) ||
+          String(book.author || '').toLowerCase().includes(term) ||
+          String(book.isbn || '').toLowerCase().includes(term)
+        );
+      });
+
+      if (!filteredBooks.length) {
+        resultsContainer.innerHTML = term
+          ? '<p>No matching books found.</p>'
+          : '<p>This library is currently empty.</p>';
+        return;
+      }
+
+      resultsContainer.innerHTML = filteredBooks.map(book => `
         <article class="book">
           ${book.cover
             ? `<img class="cover" src="${esc(book.cover)}" alt="${esc(book.title)} cover">`
             : `<div class="cover noCover">No cover image</div>`
           }
+
           <div class="bookInfo">
             <div class="bookTitle">${esc(book.title)}</div>
             <div class="author">${esc(book.author || 'Unknown author')}</div>
             <span class="badge">${esc(book.status || 'Owned')}</span>
           </div>
         </article>
-      `;
+      `).join('');
+    }
+
+    searchInput.addEventListener('input', () => {
+      renderSharedBooks(searchInput.value);
     });
 
-    html += '</div>';
-    container.innerHTML = html;
+    renderSharedBooks();
 
   } catch (error) {
     console.error('Shared library load failed:', error);
@@ -1358,8 +1388,6 @@ async function viewSharedLibrary(ownerId) {
       '<p>Could not load this shared library. Access may have been revoked.</p>';
   }
 }
-
-
 
 /* events */
 
