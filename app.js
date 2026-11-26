@@ -74,6 +74,11 @@ let shelfCandidates=[], shelfWorker=null;
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let cloudSaveTimer;
 
+
+/* =========================================================
+   SAVE / CLOUD SYNC
+========================================================= */
+
 async function save(){
   localStorage.setItem(KEY, JSON.stringify(books));
 
@@ -100,7 +105,9 @@ async function save(){
       const usedIds = new Set();
 
       const cloudBooks = books.map(book => {
+
         if (!book.cloudId) {
+
           const isbn = String(book.isbn || '').trim();
 
           let match = isbn
@@ -112,8 +119,12 @@ async function save(){
             : null;
 
           if (!match) {
-            const title = String(book.title || '').trim().toLowerCase();
-            const author = String(book.author || '').trim().toLowerCase();
+
+            const title =
+              String(book.title || '').trim().toLowerCase();
+
+            const author =
+              String(book.author || '').trim().toLowerCase();
 
             match = remoteBooks.find(row =>
               !usedIds.has(row.id) &&
@@ -122,7 +133,8 @@ async function save(){
             );
           }
 
-          book.cloudId = match ? match.id : crypto.randomUUID();
+          book.cloudId =
+            match ? match.id : crypto.randomUUID();
         }
 
         usedIds.add(book.cloudId);
@@ -145,11 +157,15 @@ async function save(){
           notes: book.notes || null
         };
       });
-  const matchedCount = cloudBooks.filter(row =>
+
+      const matchedCount = cloudBooks.filter(row =>
         remoteBooks.some(remote => remote.id === row.id)
       ).length;
 
-      if (remoteBooks.length > 0 && matchedCount < remoteBooks.length) {
+      if (
+        remoteBooks.length > 0 &&
+        matchedCount < remoteBooks.length
+      ) {
         throw new Error(
           'Only ' + matchedCount + ' of ' + books.length +
           ' books matched. No cloud changes were made.'
@@ -159,13 +175,17 @@ async function save(){
       localStorage.setItem(KEY, JSON.stringify(books));
 
       if (cloudBooks.length) {
-        const { error } = await supabaseClient
-          .from('books')
-          .upsert(cloudBooks, { onConflict: 'id' });
+
+        const { error } =
+          await supabaseClient
+            .from('books')
+            .upsert(
+              cloudBooks,
+              { onConflict: 'id' }
+            );
 
         if (error) throw error;
       }
-
 
     } catch (error) {
       console.error('Cloud save failed:', error);
@@ -173,613 +193,2594 @@ async function save(){
   }, 800);
 }
 
- 
+
+/* =========================================================
+   NAVIGATION
+========================================================= */
+
 function nav(id){
-  $$('.screen').forEach(x=>x.classList.remove('active'));
+
+  $$('.screen')
+    .forEach(x => x.classList.remove('active'));
+
   $('#'+id).classList.add('active');
-  $$('nav button').forEach(x=>x.classList.toggle('active',x.dataset.nav===id));
-  if(id!=='scan')stopCamera();
+
+  $$('nav button')
+    .forEach(x =>
+      x.classList.toggle(
+        'active',
+        x.dataset.nav === id
+      )
+    );
+
+  if(id !== 'scan')
+    stopCamera();
+
   renderAll();
 }
-function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
-function counts(){
-  let o=books.filter(b=>b.status==='Owned').length,w=books.filter(b=>b.status==='Want to Buy').length,r=books.filter(b=>b.status==='Read').length;
-  $('#bookCount').textContent=books.length;$('#ownedCount').textContent=o;$('#wantCount').textContent=w;$('#readCount').textContent=r;
+
+
+/* =========================================================
+   GENERAL HELPERS
+========================================================= */
+
+function esc(s=''){
+  return String(s).replace(
+    /[&<>"']/g,
+    c => ({
+      '&':'&amp;',
+      '<':'&lt;',
+      '>':'&gt;',
+      '"':'&quot;',
+      "'":'&#039;'
+    }[c])
+  );
 }
+
+function counts(){
+
+  let o =
+    books.filter(b => b.status === 'Owned').length;
+
+  let w =
+    books.filter(b => b.status === 'Want to Buy').length;
+
+  let r =
+    books.filter(b => b.status === 'Read').length;
+
+  $('#bookCount').textContent = books.length;
+  $('#ownedCount').textContent = o;
+  $('#wantCount').textContent = w;
+  $('#readCount').textContent = r;
+}
+
+
+/* =========================================================
+   BOOK CARD
+========================================================= */
+
 function card(b){
+
   let cover = b.cover || '';
 
   if (cover) {
-    return `<article class="book" onclick="showDetails('${b.id}')">
-      <img class="cover"
-           src="${esc(cover)}"
-           alt="${esc(b.title)} cover"
-           onerror="this.onerror=null; this.src='https://covers.openlibrary.org/b/isbn/${esc(normalizeISBN(b.isbn || ''))}-L.jpg';">
-      <div class="bookInfo">
-        <div class="bookTitle">${esc(b.title)}</div>
-        <div class="author">${esc(b.author||'Unknown author')}</div>
-        <span class="badge">${esc(b.status||'Owned')}</span>
-      </div>
-    </article>`;
+
+    return `
+      <article class="book"
+        onclick="showDetails('${b.id}')">
+
+        <img
+          class="cover"
+          src="${esc(cover)}"
+          alt="${esc(b.title)} cover"
+          onerror="this.onerror=null;this.src='';this.outerHTML='<div class=\\'cover noCover\\'>Cover unavailable</div>';"
+        >
+
+        <div class="bookInfo">
+
+          <div class="bookTitle">
+            ${esc(b.title)}
+          </div>
+
+          <div class="author">
+            ${esc(b.author || 'Unknown author')}
+          </div>
+
+          <span class="badge">
+            ${esc(b.status || 'Owned')}
+          </span>
+
+        </div>
+      </article>
+    `;
   }
 
-  return `<article class="book" onclick="showDetails('${b.id}')">
-    <div class="cover noCover">No cover image</div>
-    <div class="bookInfo">
-      <div class="bookTitle">${esc(b.title)}</div>
-      <div class="author">${esc(b.author||'Unknown author')}</div>
-      <span class="badge">${esc(b.status||'Owned')}</span>
-    </div>
-  </article>`;
+  return `
+    <article class="book"
+      onclick="showDetails('${b.id}')">
+
+      <div class="cover noCover">
+        No cover image
+      </div>
+
+      <div class="bookInfo">
+
+        <div class="bookTitle">
+          ${esc(b.title)}
+        </div>
+
+        <div class="author">
+          ${esc(b.author || 'Unknown author')}
+        </div>
+
+        <span class="badge">
+          ${esc(b.status || 'Owned')}
+        </span>
+
+      </div>
+    </article>
+  `;
 }
+
+
+/* =========================================================
+   RENDER
+========================================================= */
+
 function renderAll(){
+
   counts();
-  let recent=[...books].sort((a,b)=>b.added-a.added).slice(0,6);
-  $('#recent').innerHTML=recent.length?recent.map(card).join(''):`<div class="empty"><b>Your library is empty</b>Scan your first book to get started.</div>`;
+
+  let recent =
+    [...books]
+      .sort((a,b) => b.added - a.added)
+      .slice(0,6);
+
+  $('#recent').innerHTML =
+    recent.length
+      ? recent.map(card).join('')
+      : `
+        <div class="empty">
+          <b>Your library is empty</b>
+          Scan your first book to get started.
+        </div>
+      `;
+
   renderLibrary();
-  $('#wantList').innerHTML=books.filter(b=>b.status==='Want to Buy').map(card).join('')||`<div class="empty"><b>No books on your list</b><span>Scan a book and add it to Want to Buy.</span></div>`;
+
+  $('#wantList').innerHTML =
+    books
+      .filter(b => b.status === 'Want to Buy')
+      .map(card)
+      .join('')
+      ||
+      `
+        <div class="empty">
+          <b>No books on your list</b>
+          <span>
+            Scan a book and add it to Want to Buy.
+          </span>
+        </div>
+      `;
 }
+
+
+/* =========================================================
+   LIBRARY SORTING
+========================================================= */
+
 function renderLibrary(){
+
   const list = $('#libraryList');
+
   const sortKey = 'bookshelfSortOrder';
 
-  // Create the sorting dropdown if it doesn't already exist
   let sortSelect = $('#librarySort');
 
   if (!sortSelect) {
-    sortSelect = document.createElement('select');
+
+    sortSelect =
+      document.createElement('select');
+
     sortSelect.id = 'librarySort';
     sortSelect.className = 'librarySort';
-    sortSelect.setAttribute('aria-label', 'Sort library');
+
+    sortSelect.setAttribute(
+      'aria-label',
+      'Sort library'
+    );
 
     sortSelect.innerHTML = `
-      <option value="addedDesc">Date Added – Newest First</option>
-      <option value="addedAsc">Date Added – Oldest First</option>
-      <option value="titleAsc">Title – A to Z</option>
-      <option value="titleDesc">Title – Z to A</option>
-      <option value="authorAsc">Author – A to Z</option>
-      <option value="authorDesc">Author – Z to A</option>
-      <option value="yearDesc">Publication Year – Newest First</option>
-      <option value="yearAsc">Publication Year – Oldest First</option>
+      <option value="addedDesc">
+        Date Added – Newest First
+      </option>
+
+      <option value="addedAsc">
+        Date Added – Oldest First
+      </option>
+
+      <option value="titleAsc">
+        Title – A to Z
+      </option>
+
+      <option value="titleDesc">
+        Title – Z to A
+      </option>
+
+      <option value="authorAsc">
+        Author – A to Z
+      </option>
+
+      <option value="authorDesc">
+        Author – Z to A
+      </option>
+
+      <option value="yearDesc">
+        Publication Year – Newest First
+      </option>
+
+      <option value="yearAsc">
+        Publication Year – Oldest First
+      </option>
     `;
 
     sortSelect.style.cssText =
       'display:block;width:100%;max-width:280px;margin:0 0 12px;padding:10px;border-radius:8px;';
 
-    list.parentNode.insertBefore(sortSelect, list);
+    list.parentNode.insertBefore(
+      sortSelect,
+      list
+    );
 
-    sortSelect.addEventListener('change', () => {
-      localStorage.setItem(sortKey, sortSelect.value);
-      renderLibrary();
-    });
+    sortSelect.addEventListener(
+      'change',
+      () => {
+
+        localStorage.setItem(
+          sortKey,
+          sortSelect.value
+        );
+
+        renderLibrary();
+      }
+    );
   }
 
-  // Restore saved sorting preference
-  sortSelect.value = localStorage.getItem(sortKey) || 'addedDesc';
+  sortSelect.value =
+    localStorage.getItem(sortKey) ||
+    'addedDesc';
 
-  let q = ($('#search')?.value || '').toLowerCase();
-  let map = {owned:'Owned',want:'Want to Buy',read:'Read'};
+  let q =
+    ($('#search')?.value || '')
+      .toLowerCase();
 
-  let arr = books
-    .filter(b => currentFilter === 'all' || b.status === map[currentFilter])
-    .filter(b => (b.title + ' ' + b.author + ' ' + b.isbn).toLowerCase().includes(q));
+  let map = {
+    owned:'Owned',
+    want:'Want to Buy',
+    read:'Read'
+  };
 
-  // Sort books
-  const compareText = (a, b) =>
-    String(a || '').localeCompare(String(b || ''), undefined, {
-      sensitivity: 'base',
-      numeric: true
-    });
+  let arr =
+    books
+      .filter(b =>
+        currentFilter === 'all' ||
+        b.status === map[currentFilter]
+      )
+      .filter(b =>
+        (
+          (b.title || '') +
+          ' ' +
+          (b.author || '') +
+          ' ' +
+          (b.isbn || '')
+        )
+        .toLowerCase()
+        .includes(q)
+      );
 
-  switch (sortSelect.value) {
+  const compareText = (a,b) =>
+    String(a || '').localeCompare(
+      String(b || ''),
+      undefined,
+      {
+        sensitivity:'base',
+        numeric:true
+      }
+    );
+
+  switch(sortSelect.value){
+
     case 'titleAsc':
-      arr.sort((a,b) => compareText(a.title,b.title));
+      arr.sort((a,b) =>
+        compareText(a.title,b.title));
       break;
 
     case 'titleDesc':
-      arr.sort((a,b) => compareText(b.title,a.title));
+      arr.sort((a,b) =>
+        compareText(b.title,a.title));
       break;
 
     case 'authorAsc':
-      arr.sort((a,b) => compareText(a.author,b.author));
+      arr.sort((a,b) =>
+        compareText(a.author,b.author));
       break;
 
     case 'authorDesc':
-      arr.sort((a,b) => compareText(b.author,a.author));
+      arr.sort((a,b) =>
+        compareText(b.author,a.author));
       break;
 
     case 'addedAsc':
-      arr.sort((a,b) => Number(a.added || 0) - Number(b.added || 0));
+      arr.sort((a,b) =>
+        Number(a.added || 0) -
+        Number(b.added || 0));
       break;
 
     case 'addedDesc':
-      arr.sort((a,b) => Number(b.added || 0) - Number(a.added || 0));
+      arr.sort((a,b) =>
+        Number(b.added || 0) -
+        Number(a.added || 0));
       break;
 
     case 'yearAsc':
-      arr.sort((a,b) => Number(a.year || 0) - Number(b.year || 0));
+      arr.sort((a,b) =>
+        Number(a.year || 0) -
+        Number(b.year || 0));
       break;
 
     case 'yearDesc':
-      arr.sort((a,b) => Number(b.year || 0) - Number(a.year || 0));
+      arr.sort((a,b) =>
+        Number(b.year || 0) -
+        Number(a.year || 0));
       break;
   }
 
-  list.innerHTML = arr.length
-    ? arr.map(card).join('')
-    : `<div class="empty"><b>No matching books</b><span>Try another search or scan a book.</span></div>`;
+  list.innerHTML =
+    arr.length
+      ? arr.map(card).join('')
+      :
+      `
+        <div class="empty">
+          <b>No matching books</b>
+          <span>
+            Try another search or scan a book.
+          </span>
+        </div>
+      `;
 }
-function showDetails(id){
-  let b=books.find(x=>x.id===id);if(!b)return;
-  $('#detailsContent').innerHTML=`<div class="detailHero">${b.cover?`<img class="detailCover" src="${esc(b.cover)}">`:`<div class="detailCover noCover">No cover</div>`}<div class="detailMeta"><h2>${esc(b.title)}</h2><p><b>${esc(b.author||'Unknown author')}</b></p><p>ISBN: ${esc(b.isbn||'')}</p><p>${esc(b.publisher||'')} ${b.year?'• '+esc(b.year):''}</p></div></div><div class="detailActions"><button class="action primaryAction" onclick="cycleStatus('${b.id}')">${esc(b.status)}</button><button class="action" onclick="removeBook('${b.id}')">Delete</button></div><div class="description">${esc(b.description||'No description available.')}</div><div class="field"><label>Where I bought it</label><input id="storeField" value="${esc(b.store||'')}" placeholder="Bookstore, thrift store, etc."></div><div class="field"><label>Price paid</label><input id="priceField" inputmode="decimal" value="${esc(b.price||'')}" placeholder="$0.00"></div><div class="field"><label>Personal notes</label><textarea id="notesField" rows="4" placeholder="Notes about this book...">${esc(b.notes||'')}</textarea></div><button class="primary big" style="margin-top:14px" onclick="saveDetails('${b.id}')">Save Changes</button>`;
-  nav('details');
-}
-function saveDetails(id){let b=books.find(x=>x.id===id);b.store=$('#storeField').value;b.price=$('#priceField').value;b.notes=$('#notesField').value;save();alert('Book updated.');showDetails(id)}
-function cycleStatus(id){let b=books.find(x=>x.id===id),s=['Owned','Want to Buy','Reading','Read'];b.status=s[(s.indexOf(b.status)+1)%s.length];save();showDetails(id)}
-async function removeBook(id) {
-  if (!confirm('Remove this book from your library?')) return;
 
-  const book = books.find(x => x.id === id);
-  if (!book) return;
 
-  try {
-    if (book.cloudId) {
-      const { data: sessionData, error: sessionError } =
-        await supabaseClient.auth.getSession();
+/* =========================================================
+   MANUAL COVER FEATURE
+========================================================= */
 
-      if (sessionError) throw sessionError;
+/*
+   Uploads a selected image file directly from the browser
+   to the user's Supabase Storage folder.
 
-      const user = sessionData.session?.user;
-      if (!user) throw new Error('You must be signed in to delete this book.');
+   This is separate from import-book-cover because
+   import-book-cover is designed to download images from
+   approved external websites.
 
-      const { error } = await supabaseClient
-        .from('books')
-        .delete()
-        .eq('id', book.cloudId)
-        .eq('user_id', user.id);
+   Manual photos never need to pass through that URL
+   allow-list.
+*/
 
-      if (error) throw error;
-    }
+async function uploadManualCover(file){
 
-    books = books.filter(x => x.id !== id);
-    save();
-    nav('library');
-
-  } catch (error) {
-    console.error('Book deletion failed:', error);
-    alert('Could not delete this book. Please try again.');
+  if(!file){
+    throw new Error('No image selected.');
   }
-}
-function cleanISBN(v){return String(v||'').replace(/[^0-9Xx]/g,'').toUpperCase()}
-function isbn10to13(isbn){isbn=cleanISBN(isbn);if(isbn.length!==10)return isbn;return '978'+isbn.slice(0,9)}
-function isbn13Check(s){let sum=0;for(let i=0;i<12;i++)sum+=Number(s[i])*(i%2?3:1);return String((10-(sum%10))%10)===s[12]}
-function normalizeISBN(isbn){
-  isbn=cleanISBN(isbn);
-  if(isbn.length===10){let base=isbn10to13(isbn);if(/^\d{13}$/.test(base))return base}
-  return isbn
-}
-function isDuplicate(isbn,title,author){
-  const ni=normalizeISBN(isbn);
-  return books.find(b=>{
-    const bi=normalizeISBN(b.isbn);
-    if(ni && /^\d{13}$/.test(ni) && bi===ni)return b;
-    return title&&author&&b.title&&b.author&&b.title.toLowerCase().trim()===title.toLowerCase().trim()&&b.author.toLowerCase().trim()===author.toLowerCase().trim();
-  });
-}
-async function googleBooks(q){
-  const url='https://www.googleapis.com/books/v1/volumes?maxResults=8&q='+encodeURIComponent(q);
-  const r=await fetch(url);if(!r.ok)throw new Error('Google Books unavailable');const d=await r.json();return d.items||[];
-}
-function gbToBook(item,ocr=''){
-  const v=item.volumeInfo||{},ids=v.industryIdentifiers||[],isbn=(ids.find(x=>x.type==='ISBN_13')||ids.find(x=>x.type==='ISBN_10')||{}).identifier||'';
-  return {isbn:normalizeISBN(isbn),title:v.title||'',author:(v.authors||[]).join(', '),cover:(v.imageLinks?.thumbnail||v.imageLinks?.smallThumbnail||'').replace(/^http:/,'https:')||v.imageLinks?.smallThumbnail||'',publisher:v.publisher||'',year:v.publishedDate||'',description:v.description||'',ocr};
-}
-async function lookup(isbn,statusChoice='Owned'){
-  isbn=cleanISBN(isbn);
 
-  if(isbn.length!==10&&isbn.length!==13){
-    alert('Please enter a valid ISBN-10 or ISBN-13.');
+  if(!file.type || !file.type.startsWith('image/')){
+    throw new Error('Please select an image file.');
+  }
+
+  const MAX_SIZE = 8 * 1024 * 1024;
+
+  if(file.size > MAX_SIZE){
+    throw new Error('The selected image is larger than 8 MB.');
+  }
+
+  const {
+    data: sessionData,
+    error: sessionError
+  } = await supabaseClient.auth.getSession();
+
+  if(sessionError)
+    throw sessionError;
+
+  const user =
+    sessionData.session?.user;
+
+  if(!user){
+    throw new Error(
+      'You must be signed in to upload a cover.'
+    );
+  }
+
+  let extension =
+    file.name
+      .split('.')
+      .pop()
+      .toLowerCase();
+
+  if(!['jpg','jpeg','png','webp'].includes(extension)){
+
+    if(file.type === 'image/png')
+      extension = 'png';
+
+    else if(file.type === 'image/webp')
+      extension = 'webp';
+
+    else
+      extension = 'jpg';
+  }
+
+  const filename =
+    `${user.id}/${crypto.randomUUID()}.${extension}`;
+
+  const {
+    error: uploadError
+  } =
+    await supabaseClient.storage
+      .from('book-covers')
+      .upload(
+        filename,
+        file,
+        {
+          contentType:
+            file.type || 'image/jpeg',
+          upsert:false
+        }
+      );
+
+  if(uploadError)
+    throw uploadError;
+
+  const {
+    data: publicUrl
+  } =
+    supabaseClient.storage
+      .from('book-covers')
+      .getPublicUrl(filename);
+
+  if(!publicUrl?.publicUrl){
+    throw new Error(
+      'Could not create the cover URL.'
+    );
+  }
+
+  return publicUrl.publicUrl;
+}
+
+
+/*
+   Opens the camera/photo picker.
+
+   capture="environment" tells supported phones
+   to prefer the rear camera.
+
+   On desktop this normally gives the user a
+   normal file chooser instead.
+*/
+
+function openCoverCamera(){
+
+  const input =
+    $('#manualCoverInput');
+
+  if(!input){
+    console.error(
+      'manualCoverInput was not found in the HTML.'
+    );
+    alert(
+      'The cover upload control is missing from the page.'
+    );
     return;
   }
 
-  let normalized=normalizeISBN(isbn);
-  let existing=isDuplicate(normalized,'','');
+  input.setAttribute(
+    'accept',
+    'image/*'
+  );
 
-  if(existing){
-    await stopCamera();
-    showDetails(existing.id);
-    alert(existing.status==='Owned'
-      ?'You already have this book in your library.'
-      :'This book is already on your Want to Buy list.');
+  input.setAttribute(
+    'capture',
+    'environment'
+  );
+
+  input.click();
+}
+
+
+/*
+   This allows a normal saved image to be selected.
+
+   On phones, the same control can also open the camera
+   depending on the device/browser.
+*/
+
+function openCoverFilePicker(){
+
+  const input =
+    $('#manualCoverInput');
+
+  if(!input){
+    console.error(
+      'manualCoverInput was not found in the HTML.'
+    );
+    alert(
+      'The cover upload control is missing from the page.'
+    );
     return;
   }
 
-  $('#scanMsg').textContent='ISBN confirmed — looking up book…';
+  input.setAttribute(
+    'accept',
+    'image/*'
+  );
+
+  input.removeAttribute(
+    'capture'
+  );
+
+  input.click();
+}
+
+
+/*
+   Handles the actual image after the user
+   takes/selects it.
+*/
+
+async function handleManualCoverSelected(event){
+
+  const input = event.target;
+
+  const file =
+    input.files && input.files[0];
+
+  if(!file)
+    return;
+
+  const bookId =
+    input.dataset.bookId;
+
+  if(!bookId){
+    alert('No book was selected.');
+    input.value='';
+    return;
+  }
+
+  const book =
+    books.find(x => x.id === bookId);
+
+  if(!book){
+    alert('Could not find that book.');
+    input.value='';
+    return;
+  }
 
   try{
+
+    $('#detailsContent')
+      .querySelectorAll('button')
+      .forEach(btn => {
+        btn.disabled = true;
+      });
+
+    const status =
+      document.createElement('p');
+
+    status.id =
+      'coverUploadStatus';
+
+    status.style.cssText =
+      'margin:12px 0;color:#68727a;font-size:14px;';
+
+    status.textContent =
+      'Uploading cover…';
+
+    const existing =
+      $('#detailsContent')
+        .querySelector('#coverUploadStatus');
+
+    if(existing)
+      existing.remove();
+
+    $('#detailsContent')
+      .insertBefore(
+        status,
+        $('#detailsContent').firstChild
+      );
+
+    const newCover =
+      await uploadManualCover(file);
+
+    book.cover =
+      newCover;
+
+    await save();
+
+    status.textContent =
+      'Cover saved successfully.';
+
+    showDetails(book.id);
+
+  }catch(error){
+
+    console.error(
+      'Manual cover upload failed:',
+      error
+    );
+
+    alert(
+      'Could not save the cover.\n\n' +
+      (error.message || 'Unknown error')
+    );
+
+    showDetails(book.id);
+
+  }finally{
+
+    input.value='';
+
+  }
+}
+
+
+/* =========================================================
+   BOOK DETAILS
+========================================================= */
+
+function showDetails(id){
+
+  let b =
+    books.find(x => x.id === id);
+
+  if(!b)
+    return;
+
+  $('#detailsContent').innerHTML = `
+
+    <div class="detailHero">
+
+      ${
+        b.cover
+          ?
+          `
+          <img
+            class="detailCover"
+            src="${esc(b.cover)}"
+            alt="${esc(b.title)} cover"
+            onerror="this.onerror=null;this.src='';this.outerHTML='<div class=\\'detailCover noCover\\'>Cover unavailable</div>';"
+          >
+          `
+          :
+          `
+          <div class="detailCover noCover">
+            No cover
+          </div>
+          `
+      }
+
+      <div class="detailMeta">
+
+        <h2>
+          ${esc(b.title)}
+        </h2>
+
+        <p>
+          <b>
+            ${esc(b.author || 'Unknown author')}
+          </b>
+        </p>
+
+        <p>
+          ISBN: ${esc(b.isbn || '')}
+        </p>
+
+        <p>
+          ${esc(b.publisher || '')}
+          ${b.year ? '• ' + esc(b.year) : ''}
+        </p>
+
+      </div>
+
+    </div>
+
+    <div
+      class="coverActions"
+      style="
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+        margin:14px 0;
+      "
+    >
+
+      <button
+        class="action"
+        onclick="openCoverCamera()"
+      >
+        📷 Take Photo
+      </button>
+
+      <button
+        class="action"
+        onclick="openCoverFilePicker()"
+      >
+        🖼️ Choose Photo
+      </button>
+
+      ${
+        b.cover
+          ?
+          `
+          <button
+            class="action"
+            onclick="removeBookCover('${b.id}')"
+          >
+            Remove Cover
+          </button>
+          `
+          :
+          ''
+      }
+
+    </div>
+
+    <input
+      type="file"
+      id="manualCoverInput"
+      accept="image/*"
+      style="display:none"
+      data-book-id="${esc(b.id)}"
+    >
+
+    <div
+      class="detailActions"
+    >
+
+      <button
+        class="action primaryAction"
+        onclick="cycleStatus('${b.id}')"
+      >
+        ${esc(b.status)}
+      </button>
+
+      <button
+        class="action"
+        onclick="removeBook('${b.id}')"
+      >
+        Delete
+      </button>
+
+    </div>
+
+    <div class="description">
+      ${esc(
+        b.description ||
+        'No description available.'
+      )}
+    </div>
+
+    <div class="field">
+
+      <label>
+        Where I bought it
+      </label>
+
+      <input
+        id="storeField"
+        value="${esc(b.store || '')}"
+        placeholder="Bookstore, thrift store, etc."
+      >
+
+    </div>
+
+    <div class="field">
+
+      <label>
+        Price paid
+      </label>
+
+      <input
+        id="priceField"
+        inputmode="decimal"
+        value="${esc(b.price || '')}"
+        placeholder="$0.00"
+      >
+
+    </div>
+
+    <div class="field">
+
+      <label>
+        Personal notes
+      </label>
+
+      <textarea
+        id="notesField"
+        rows="4"
+        placeholder="Notes about this book..."
+      >${esc(b.notes || '')}</textarea>
+
+    </div>
+
+    <button
+      class="primary big"
+      style="margin-top:14px"
+      onclick="saveDetails('${b.id}')"
+    >
+      Save Changes
+    </button>
+  `;
+
+  const coverInput =
+    $('#manualCoverInput');
+
+  if(coverInput){
+
+    coverInput.addEventListener(
+      'change',
+      handleManualCoverSelected
+    );
+  }
+
+  nav('details');
+}
+
+
+/*
+   Removes the cover URL from the book.
+
+   The actual image remains in Supabase Storage for now.
+   This is intentional so we don't accidentally delete
+   a storage object that may still be referenced elsewhere.
+*/
+
+async function removeBookCover(id){
+
+  const book =
+    books.find(x => x.id === id);
+
+  if(!book)
+    return;
+
+  if(!confirm(
+    'Remove the cover image from this book?'
+  )){
+    return;
+  }
+
+  book.cover='';
+
+  await save();
+
+  showDetails(id);
+}
+
+
+/* =========================================================
+   DETAILS SAVE / STATUS
+========================================================= */
+
+function saveDetails(id){
+
+  let b =
+    books.find(x => x.id === id);
+
+  if(!b)
+    return;
+
+  b.store =
+    $('#storeField').value;
+
+  b.price =
+    $('#priceField').value;
+
+  b.notes =
+    $('#notesField').value;
+
+  save();
+
+  alert('Book updated.');
+
+  showDetails(id);
+}
+
+function cycleStatus(id){
+
+  let b =
+    books.find(x => x.id === id);
+
+  if(!b)
+    return;
+
+  let s = [
+    'Owned',
+    'Want to Buy',
+    'Reading',
+    'Read'
+  ];
+
+  b.status =
+    s[
+      (s.indexOf(b.status) + 1) %
+      s.length
+    ];
+
+  save();
+
+  showDetails(id);
+}
+
+
+/* =========================================================
+   DELETE BOOK
+========================================================= */
+
+async function removeBook(id){
+
+  if(!confirm(
+    'Remove this book from your library?'
+  )){
+    return;
+  }
+
+  const book =
+    books.find(x => x.id === id);
+
+  if(!book)
+    return;
+
+  try{
+
+    if(book.cloudId){
+
+      const {
+        data: sessionData,
+        error: sessionError
+      } =
+        await supabaseClient.auth.getSession();
+
+      if(sessionError)
+        throw sessionError;
+
+      const user =
+        sessionData.session?.user;
+
+      if(!user){
+        throw new Error(
+          'You must be signed in to delete this book.'
+        );
+      }
+
+      const {
+        error
+      } =
+        await supabaseClient
+          .from('books')
+          .delete()
+          .eq('id', book.cloudId)
+          .eq('user_id', user.id);
+
+      if(error)
+        throw error;
+    }
+
+    books =
+      books.filter(x => x.id !== id);
+
+    save();
+
+    nav('library');
+
+  }catch(error){
+
+    console.error(
+      'Book deletion failed:',
+      error
+    );
+
+    alert(
+      'Could not delete this book. Please try again.'
+    );
+  }
+}
+
+
+/* =========================================================
+   ISBN HELPERS
+========================================================= */
+
+function cleanISBN(v){
+
+  return String(v || '')
+    .replace(/[^0-9Xx]/g,'')
+    .toUpperCase();
+}
+
+function isbn10to13(isbn){
+
+  isbn =
+    cleanISBN(isbn);
+
+  if(isbn.length !== 10)
+    return isbn;
+
+  return '978' +
+    isbn.slice(0,9);
+}
+
+function isbn13Check(s){
+
+  let sum=0;
+
+  for(let i=0;i<12;i++)
+    sum += Number(s[i]) *
+      (i % 2 ? 3 : 1);
+
+  return String(
+    (10 - (sum % 10)) % 10
+  ) === s[12];
+}
+
+function normalizeISBN(isbn){
+
+  isbn =
+    cleanISBN(isbn);
+
+  if(isbn.length === 10){
+
+    let base =
+      isbn10to13(isbn);
+
+    if(/^\d{13}$/.test(base))
+      return base;
+  }
+
+  return isbn;
+}
+
+function isDuplicate(
+  isbn,
+  title,
+  author
+){
+
+  const ni =
+    normalizeISBN(isbn);
+
+  return books.find(b => {
+
+    const bi =
+      normalizeISBN(b.isbn);
+
+    if(
+      ni &&
+      /^\d{13}$/.test(ni) &&
+      bi === ni
+    ){
+      return b;
+    }
+
+    return (
+      title &&
+      author &&
+      b.title &&
+      b.author &&
+      b.title.toLowerCase().trim() ===
+        title.toLowerCase().trim() &&
+      b.author.toLowerCase().trim() ===
+        author.toLowerCase().trim()
+    );
+  });
+}
+
+
+/* =========================================================
+   GOOGLE BOOKS
+========================================================= */
+
+async function googleBooks(q){
+
+  const url =
+    'https://www.googleapis.com/books/v1/volumes' +
+    '?maxResults=8&q=' +
+    encodeURIComponent(q);
+
+  const r =
+    await fetch(url);
+
+  if(!r.ok)
+    throw new Error(
+      'Google Books unavailable'
+    );
+
+  const d =
+    await r.json();
+
+  return d.items || [];
+}
+
+function gbToBook(item,ocr=''){
+
+  const v =
+    item.volumeInfo || {};
+
+  const ids =
+    v.industryIdentifiers || [];
+
+  const isbn =
+    (
+      ids.find(
+        x => x.type === 'ISBN_13'
+      ) ||
+      ids.find(
+        x => x.type === 'ISBN_10'
+      ) ||
+      {}
+    ).identifier || '';
+
+  return {
+
+    isbn:
+      normalizeISBN(isbn),
+
+    title:
+      v.title || '',
+
+    author:
+      (v.authors || [])
+        .join(', '),
+
+    cover:
+      (
+        v.imageLinks?.thumbnail ||
+        v.imageLinks?.smallThumbnail ||
+        ''
+      )
+      .replace(
+        /^http:/,
+        'https:'
+      ) ||
+      v.imageLinks?.smallThumbnail ||
+      '',
+
+    publisher:
+      v.publisher || '',
+
+    year:
+      v.publishedDate || '',
+
+    description:
+      v.description || '',
+
+    ocr
+  };
+}
+
+
+/* =========================================================
+   BOOK LOOKUP
+========================================================= */
+
+async function lookup(
+  isbn,
+  statusChoice='Owned'
+){
+
+  isbn =
+    cleanISBN(isbn);
+
+  if(
+    isbn.length !== 10 &&
+    isbn.length !== 13
+  ){
+
+    alert(
+      'Please enter a valid ISBN-10 or ISBN-13.'
+    );
+
+    return;
+  }
+
+  let normalized =
+    normalizeISBN(isbn);
+
+  let existing =
+    isDuplicate(
+      normalized,
+      '',
+      ''
+    );
+
+  if(existing){
+
+    await stopCamera();
+
+    showDetails(
+      existing.id
+    );
+
+    alert(
+      existing.status === 'Owned'
+        ? 'You already have this book in your library.'
+        : 'This book is already on your Want to Buy list.'
+    );
+
+    return;
+  }
+
+  $('#scanMsg').textContent =
+    'ISBN confirmed — looking up book…';
+
+  try{
+
     let item=null;
 
-    // Try Google Books first
     try{
-      let results=await googleBooks('isbn:'+normalized);
-      item=results[0]||null;
+
+      let results =
+        await googleBooks(
+          'isbn:' + normalized
+        );
+
+      item =
+        results[0] || null;
+
     }catch(googleError){
-      console.warn('Google Books unavailable. Trying Open Library.',googleError);
+
+      console.warn(
+        'Google Books unavailable. Trying Open Library.',
+        googleError
+      );
     }
 
     let b;
 
-    // Use Open Library if Google Books did not return a book
     if(!item){
-      let r=await fetch(
-        'https://openlibrary.org/isbn/'+encodeURIComponent(normalized)+'.json'
-      );
 
-      if(!r.ok)throw new Error('Book not found');
+      let r =
+        await fetch(
+          'https://openlibrary.org/isbn/' +
+          encodeURIComponent(normalized) +
+          '.json'
+        );
 
-      let d=await r.json();
+      if(!r.ok)
+        throw new Error(
+          'Book not found'
+        );
+
+      let d =
+        await r.json();
+
       let desc='';
-      let works=d.works?.[0]?.key;
+
+      let works =
+        d.works?.[0]?.key;
 
       if(works){
+
         try{
-          let wd=await(await fetch('https://openlibrary.org'+works+'.json')).json();
-          desc=typeof wd.description==='string'
-            ?wd.description
-            :(wd.description?.value||'');
+
+          let wd =
+            await (
+              await fetch(
+                'https://openlibrary.org' +
+                works +
+                '.json'
+              )
+            ).json();
+
+          desc =
+            typeof wd.description === 'string'
+              ? wd.description
+              : (
+                  wd.description?.value ||
+                  ''
+                );
+
         }catch(e){}
       }
 
-      b={
-        id:crypto.randomUUID(),
-        isbn:normalized,
-        title:d.title||'Unknown title',
-        author:(d.authors||[]).map(a=>a.name||'').filter(Boolean).join(','),
-        cover:`https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg`,
-        publisher:(d.publishers||[])[0]||'',
-        year:d.publish_date||'',
-        description:desc,
-        status:statusChoice,
-        added:Date.now(),
+      b = {
+
+        id:
+          crypto.randomUUID(),
+
+        isbn:
+          normalized,
+
+        title:
+          d.title ||
+          'Unknown title',
+
+        author:
+          (d.authors || [])
+            .map(a => a.name || '')
+            .filter(Boolean)
+            .join(','),
+
+        cover:
+          `https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg`,
+
+        publisher:
+          (d.publishers || [])[0] ||
+          '',
+
+        year:
+          d.publish_date ||
+          '',
+
+        description:
+          desc,
+
+        status:
+          statusChoice,
+
+        added:
+          Date.now(),
+
         store:'',
         price:'',
         notes:''
       };
 
     }else{
-      b=gbToBook(item);
-      b.id=crypto.randomUUID();
-      b.status=statusChoice;
-      b.added=Date.now();
+
+      b =
+        gbToBook(item);
+
+      b.id =
+        crypto.randomUUID();
+
+      b.status =
+        statusChoice;
+
+      b.added =
+        Date.now();
+
       b.store='';
       b.price='';
       b.notes='';
     }
 
-    // Upload the cover to Supabase Storage
+
+    /* Upload automatic cover */
+
     if(b.cover){
-      $('#scanMsg').textContent='Saving book cover to your library…';
+
+      $('#scanMsg').textContent =
+        'Saving book cover to your library…';
 
       try{
-        const {data,error}=await supabaseClient.functions.invoke(
-          'import-book-cover',
-          {
-            body:{
-              coverUrl:b.cover
+
+        const {
+          data,
+          error
+        } =
+          await supabaseClient.functions.invoke(
+            'import-book-cover',
+            {
+              body:{
+                coverUrl:b.cover
+              }
             }
-          }
-        );
+          );
 
-        if(error)throw error;
+        if(error)
+          throw error;
 
-        if(!data?.success||!data.cover){
-          throw new Error(data?.error||'Cover upload failed');
+        if(
+          !data?.success ||
+          !data.cover
+        ){
+          throw new Error(
+            data?.error ||
+            'Cover upload failed'
+          );
         }
 
-        b.cover=data.cover;
+        b.cover =
+          data.cover;
 
-        console.log('Book cover saved to Supabase:',b.cover);
+        console.log(
+          'Book cover saved to Supabase:',
+          b.cover
+        );
 
       }catch(coverError){
-        console.error('Could not upload book cover:',coverError);
+
+        console.error(
+          'Could not upload book cover:',
+          coverError
+        );
       }
     }
 
     books.unshift(b);
+
     save();
 
     await stopCamera();
+
     showDetails(b.id);
 
   }catch(e){
-    console.error('Book lookup failed:',e);
-    $('#scanMsg').textContent='Book not found. Try another angle or enter the ISBN manually.';
-    alert('I could not find that ISBN. Try the manual ISBN field or another edition.');
+
+    console.error(
+      'Book lookup failed:',
+      e
+    );
+
+    $('#scanMsg').textContent =
+      'Book not found. Try another angle or enter the ISBN manually.';
+
+    alert(
+      'I could not find that ISBN. Try the manual ISBN field or another edition.'
+    );
   }
-}
-function resetCandidate(){candidateISBN='';candidateHits=0;candidateSince=0}
-async function startCamera(){
-  await stopCamera();nav('scan');scanLocked=false;resetCandidate();$('#scanMsg').textContent='Starting camera…';
-  const oldVideo=$('#video');if(!oldVideo)return;oldVideo.style.display='none';const parent=oldVideo.parentElement;let prior=$('#zxing-video');if(prior)prior.remove();
-  scanVideo=document.createElement('video');scanVideo.id='zxing-video';scanVideo.setAttribute('playsinline','true');scanVideo.setAttribute('autoplay','true');scanVideo.muted=true;
-  scanVideo.style.cssText='display:block;width:100%;height:100%;min-height:260px;object-fit:cover;border-radius:12px;background:#111';parent.appendChild(scanVideo);
-  try{
-    $('#scanMsg').textContent='Loading barcode reader…';
-    const browserMod=await import('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm'),libMod=await import('https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/+esm');
-    const hints=new Map();hints.set(libMod.DecodeHintType.POSSIBLE_FORMATS,[libMod.BarcodeFormat.EAN_13,libMod.BarcodeFormat.EAN_8]);hints.set(libMod.DecodeHintType.TRY_HARDER,true);
-    zxingReader=new browserMod.BrowserMultiFormatReader(hints,120);
-    const constraints={audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30},focusMode:'continuous'}};
-    scannerControls=await zxingReader.decodeFromConstraints(constraints,scanVideo,(result,error)=>{
-      if(scanLocked||!result)return;const raw=result.getText(),isbn=cleanISBN(raw);if(isbn.length!==13)return;const now=Date.now();
-      if(isbn===candidateISBN&&now-candidateSince<2200)candidateHits++;else{candidateISBN=isbn;candidateHits=1;candidateSince=now}
-      $('#scanMsg').textContent=`Barcode detected — confirming ISBN (${Math.min(candidateHits,2)}/2). Hold steady.`;
-      if(candidateHits>=2){scanLocked=true;$('#scanMsg').textContent='ISBN confirmed. Looking up book…';lookup(isbn)}
-    });
-    $('#scanMsg').textContent='Center the whole barcode in the camera view. Hold steady; avoid glare and shadows.';
-  }catch(e){console.error(e);$('#scanMsg').textContent='Could not start the scanner. Check Safari camera permission, then refresh. You can enter the ISBN manually below.';if(scanVideo){scanVideo.remove();scanVideo=null}oldVideo.style.display=''}
-}
-async function stopCamera(){
-  if(scannerControls){try{scannerControls.stop()}catch(e){}scannerControls=null}
-  if(zxingReader){try{zxingReader.reset()}catch(e){}zxingReader=null}
-  if(scanVideo){try{scanVideo.pause();if(scanVideo.srcObject)scanVideo.srcObject.getTracks().forEach(t=>t.stop())}catch(e){}scanVideo.remove();scanVideo=null}
-  const oldVideo=$('#video');if(oldVideo){oldVideo.srcObject=null;oldVideo.style.display=''}
-  resetCandidate();scanLocked=false
 }
 
-/* ---------- Shelf Scan v3 ---------- */
-function setShelfStatus(msg,pct){$('#shelfStatus').textContent=msg;$('#shelfProgress').style.width=(pct||0)+'%'}
-function imageFromFile(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);res(im)};im.onerror=rej;im.src=u})}
-function canvasFromImage(im,maxW=1500){
-  const scale=Math.min(1,maxW/im.naturalWidth),c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*scale);c.height=Math.round(im.naturalHeight*scale);c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c
+
+/* =========================================================
+   BARCODE SCANNER
+========================================================= */
+
+function resetCandidate(){
+
+  candidateISBN='';
+  candidateHits=0;
+  candidateSince=0;
 }
-function rotateCanvas(src,deg){
-  const c=document.createElement('canvas'),ctx=c.getContext('2d'),r=Math.abs(deg)%180===90;c.width=r?src.height:src.width;c.height=r?src.width:src.height;
-  ctx.translate(c.width/2,c.height/2);ctx.rotate(deg*Math.PI/180);ctx.drawImage(src,-src.width/2,-src.height/2);return c
-}
-async function ocrWords(c,rotation){
-  const rc=rotateCanvas(c,rotation);
-  const result=await shelfWorker.recognize(rc,{rotateAuto:true});
-  const words=(result.data.words||[]).filter(w=>w.text&&w.text.trim()&&w.confidence>=18);
-  return {rotation,canvas:rc,words,result};
-}
-function cleanOCR(s){return String(s||'').replace(/[^A-Za-z0-9À-ÿ'&:,\- ]/g,' ').replace(/\s+/g,' ').trim()}
-function scoreText(a,b){
-  a=cleanOCR(a).toLowerCase();b=cleanOCR(b).toLowerCase();if(!a||!b)return 0;
-  const at=new Set(a.split(/\s+/).filter(x=>x.length>2)),bt=new Set(b.split(/\s+/).filter(x=>x.length>2));let hit=0;at.forEach(x=>{if(bt.has(x))hit++});return hit/Math.max(1,Math.min(at.size,bt.size))
-}
-function clusterWords(words,canvas){
-  // Words are horizontal in the OCR canvas. Their x positions group text belonging to one spine.
-  let arr=words.map(w=>({x:(w.bbox.x0+w.bbox.x1)/2,y:(w.bbox.y0+w.bbox.y1)/2,w:w.bbox.x1-w.bbox.x0,h:w.bbox.y1-w.bbox.y0,text:cleanOCR(w.text),conf:w.confidence})).filter(x=>x.text.length>=2);
-  arr.sort((a,b)=>a.x-b.x);
-  const groups=[];const tolerance=Math.max(28,canvas.width*.035);
-  for(const item of arr){
-    let g=groups[groups.length-1];
-    if(!g||item.x-g.maxX>tolerance){groups.push({minX:item.x,maxX:item.x,items:[item]})}
-    else{g.items.push(item);g.maxX=Math.max(g.maxX,item.x)}
+
+async function startCamera(){
+
+  await stopCamera();
+
+  nav('scan');
+
+  scanLocked=false;
+
+  resetCandidate();
+
+  $('#scanMsg').textContent =
+    'Starting camera…';
+
+  const oldVideo =
+    $('#video');
+
+  if(!oldVideo)
+    return;
+
+  oldVideo.style.display='none';
+
+  const parent =
+    oldVideo.parentElement;
+
+  let prior =
+    $('#zxing-video');
+
+  if(prior)
+    prior.remove();
+
+  scanVideo =
+    document.createElement('video');
+
+  scanVideo.id =
+    'zxing-video';
+
+  scanVideo.setAttribute(
+    'playsinline',
+    'true'
+  );
+
+  scanVideo.setAttribute(
+    'autoplay',
+    'true'
+  );
+
+  scanVideo.muted=true;
+
+  scanVideo.style.cssText =
+    'display:block;width:100%;height:100%;min-height:260px;object-fit:cover;border-radius:12px;background:#111';
+
+  parent.appendChild(
+    scanVideo
+  );
+
+  try{
+
+    $('#scanMsg').textContent =
+      'Loading barcode reader…';
+
+    const browserMod =
+      await import(
+        'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm'
+      );
+
+    const libMod =
+      await import(
+        'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/+esm'
+      );
+
+    const hints =
+      new Map();
+
+    hints.set(
+      libMod.DecodeHintType.POSSIBLE_FORMATS,
+      [
+        libMod.BarcodeFormat.EAN_13,
+        libMod.BarcodeFormat.EAN_8
+      ]
+    );
+
+    hints.set(
+      libMod.DecodeHintType.TRY_HARDER,
+      true
+    );
+
+    zxingReader =
+      new browserMod.BrowserMultiFormatReader(
+        hints,
+        120
+      );
+
+    const constraints = {
+
+      audio:false,
+
+      video:{
+        facingMode:{
+          ideal:'environment'
+        },
+
+        width:{
+          ideal:1920
+        },
+
+        height:{
+          ideal:1080
+        },
+
+        frameRate:{
+          ideal:30,
+          max:30
+        },
+
+        focusMode:
+          'continuous'
+      }
+    };
+
+    scannerControls =
+      await zxingReader.decodeFromConstraints(
+        constraints,
+        scanVideo,
+        (result,error) => {
+
+          if(
+            scanLocked ||
+            !result
+          ){
+            return;
+          }
+
+          const raw =
+            result.getText();
+
+          const isbn =
+            cleanISBN(raw);
+
+          if(isbn.length !== 13)
+            return;
+
+          const now =
+            Date.now();
+
+          if(
+            isbn === candidateISBN &&
+            now - candidateSince < 2200
+          ){
+            candidateHits++;
+
+          }else{
+
+            candidateISBN =
+              isbn;
+
+            candidateHits=1;
+
+            candidateSince =
+              now;
+          }
+
+          $('#scanMsg').textContent =
+            `Barcode detected — confirming ISBN (${Math.min(candidateHits,2)}/2). Hold steady.`;
+
+          if(candidateHits >= 2){
+
+            scanLocked=true;
+
+            $('#scanMsg').textContent =
+              'ISBN confirmed. Looking up book…';
+
+            lookup(isbn);
+          }
+        }
+      );
+
+    $('#scanMsg').textContent =
+      'Center the whole barcode in the camera view. Hold steady; avoid glare and shadows.';
+
+  }catch(e){
+
+    console.error(e);
+
+    $('#scanMsg').textContent =
+      'Could not start the scanner. Check camera permission, then refresh. You can enter the ISBN manually below.';
+
+    if(scanVideo){
+
+      scanVideo.remove();
+
+      scanVideo=null;
+    }
+
+    oldVideo.style.display='';
   }
-  // Merge close groups and discard tiny/noisy clusters.
-  let merged=[];
-  for(const g of groups){
-    const width=g.maxX-g.minX;const count=g.items.length;
-    if(count>=2 || width>30){
-      const prev=merged[merged.length-1];
-      if(prev&&g.minX-prev.maxX<Math.max(35,canvas.width*.045)){prev.items.push(...g.items);prev.maxX=Math.max(prev.maxX,g.maxX)}
-      else merged.push({minX:g.minX,maxX:g.maxX,items:g.items})
+}
+
+async function stopCamera(){
+
+  if(scannerControls){
+
+    try{
+      scannerControls.stop();
+    }catch(e){}
+
+    scannerControls=null;
+  }
+
+  if(zxingReader){
+
+    try{
+      zxingReader.reset();
+    }catch(e){}
+
+    zxingReader=null;
+  }
+
+  if(scanVideo){
+
+    try{
+
+      scanVideo.pause();
+
+      if(scanVideo.srcObject){
+
+        scanVideo.srcObject
+          .getTracks()
+          .forEach(t => t.stop());
+      }
+
+    }catch(e){}
+
+    scanVideo.remove();
+
+    scanVideo=null;
+  }
+
+  const oldVideo =
+    $('#video');
+
+  if(oldVideo){
+
+    oldVideo.srcObject=null;
+    oldVideo.style.display='';
+  }
+
+  resetCandidate();
+
+  scanLocked=false;
+}
+
+
+/* =========================================================
+   SHELF SCAN
+========================================================= */
+
+function setShelfStatus(msg,pct){
+
+  $('#shelfStatus').textContent =
+    msg;
+
+  $('#shelfProgress').style.width =
+    (pct || 0) + '%';
+}
+
+function imageFromFile(file){
+
+  return new Promise(
+    (res,rej) => {
+
+      const u =
+        URL.createObjectURL(file);
+
+      const im =
+        new Image();
+
+      im.onload = () => {
+
+        URL.revokeObjectURL(u);
+
+        res(im);
+      };
+
+      im.onerror =
+        rej;
+
+      im.src=u;
+    }
+  );
+}
+
+function canvasFromImage(
+  im,
+  maxW=1500
+){
+
+  const scale =
+    Math.min(
+      1,
+      maxW /
+      im.naturalWidth
+    );
+
+  const c =
+    document.createElement('canvas');
+
+  c.width =
+    Math.round(
+      im.naturalWidth *
+      scale
+    );
+
+  c.height =
+    Math.round(
+      im.naturalHeight *
+      scale
+    );
+
+  c.getContext('2d')
+    .drawImage(
+      im,
+      0,
+      0,
+      c.width,
+      c.height
+    );
+
+  return c;
+}
+
+function rotateCanvas(
+  src,
+  deg
+){
+
+  const c =
+    document.createElement('canvas');
+
+  const ctx =
+    c.getContext('2d');
+
+  const r =
+    Math.abs(deg) % 180 === 90;
+
+  c.width =
+    r
+      ? src.height
+      : src.width;
+
+  c.height =
+    r
+      ? src.width
+      : src.height;
+
+  ctx.translate(
+    c.width / 2,
+    c.height / 2
+  );
+
+  ctx.rotate(
+    deg *
+    Math.PI /
+    180
+  );
+
+  ctx.drawImage(
+    src,
+    -src.width / 2,
+    -src.height / 2
+  );
+
+  return c;
+}
+
+async function ocrWords(
+  c,
+  rotation
+){
+
+  const rc =
+    rotateCanvas(
+      c,
+      rotation
+    );
+
+  const result =
+    await shelfWorker.recognize(
+      rc,
+      {
+        rotateAuto:true
+      }
+    );
+
+  const words =
+    (result.data.words || [])
+      .filter(
+        w =>
+          w.text &&
+          w.text.trim() &&
+          w.confidence >= 18
+      );
+
+  return {
+    rotation,
+    canvas:rc,
+    words,
+    result
+  };
+}
+
+function cleanOCR(s){
+
+  return String(s || '')
+    .replace(
+      /[^A-Za-z0-9À-ÿ'&:,\- ]/g,
+      ' '
+    )
+    .replace(
+      /\s+/g,
+      ' '
+    )
+    .trim();
+}
+
+function scoreText(a,b){
+
+  a =
+    cleanOCR(a)
+      .toLowerCase();
+
+  b =
+    cleanOCR(b)
+      .toLowerCase();
+
+  if(!a || !b)
+    return 0;
+
+  const at =
+    new Set(
+      a.split(/\s+/)
+        .filter(x => x.length > 2)
+    );
+
+  const bt =
+    new Set(
+      b.split(/\s+/)
+        .filter(x => x.length > 2)
+    );
+
+  let hit=0;
+
+  at.forEach(x => {
+
+    if(bt.has(x))
+      hit++;
+  });
+
+  return hit /
+    Math.max(
+      1,
+      Math.min(
+        at.size,
+        bt.size
+      )
+    );
+}
+
+function clusterWords(
+  words,
+  canvas
+){
+
+  let arr =
+    words
+      .map(w => ({
+        x:
+          (w.bbox.x0 +
+           w.bbox.x1) / 2,
+
+        y:
+          (w.bbox.y0 +
+           w.bbox.y1) / 2,
+
+        w:
+          w.bbox.x1 -
+          w.bbox.x0,
+
+        h:
+          w.bbox.y1 -
+          w.bbox.y0,
+
+        text:
+          cleanOCR(
+            w.text
+          ),
+
+        conf:
+          w.confidence
+      }))
+      .filter(
+        x =>
+          x.text.length >= 2
+      );
+
+  arr.sort(
+    (a,b) =>
+      a.x - b.x
+  );
+
+  const groups=[];
+  const tolerance =
+    Math.max(
+      28,
+      canvas.width *
+      .035
+    );
+
+  for(const item of arr){
+
+    let g =
+      groups[
+        groups.length - 1
+      ];
+
+    if(
+      !g ||
+      item.x - g.maxX >
+        tolerance
+    ){
+
+      groups.push({
+        minX:item.x,
+        maxX:item.x,
+        items:[item]
+      });
+
+    }else{
+
+      g.items.push(item);
+
+      g.maxX =
+        Math.max(
+          g.maxX,
+          item.x
+        );
     }
   }
+
+  let merged=[];
+
+  for(const g of groups){
+
+    const width =
+      g.maxX -
+      g.minX;
+
+    const count =
+      g.items.length;
+
+    if(
+      count >= 2 ||
+      width > 30
+    ){
+
+      const prev =
+        merged[
+          merged.length - 1
+        ];
+
+      if(
+        prev &&
+        g.minX -
+        prev.maxX <
+          Math.max(
+            35,
+            canvas.width *
+            .045
+          )
+      ){
+
+        prev.items.push(
+          ...g.items
+        );
+
+        prev.maxX =
+          Math.max(
+            prev.maxX,
+            g.maxX
+          );
+
+      }else{
+
+        merged.push({
+          minX:g.minX,
+          maxX:g.maxX,
+          items:g.items
+        });
+      }
+    }
+  }
+
   return merged;
 }
-function cropGroup(c,g){
-  const xs=g.items.map(x=>x.x),ys=g.items.map(x=>x.y);
-  const minX=Math.max(0,Math.floor(Math.min(...xs)-Math.max(45,c.width*.035))),maxX=Math.min(c.width,Math.ceil(Math.max(...xs)+Math.max(45,c.width*.035)));
-  const minY=Math.max(0,Math.floor(Math.min(...ys)-Math.max(55,c.height*.04))),maxY=Math.min(c.height,Math.ceil(Math.max(...ys)+Math.max(55,c.height*.04)));
-  const out=document.createElement('canvas');out.width=maxX-minX;out.height=maxY-minY;out.getContext('2d').drawImage(c,minX,minY,out.width,out.height,0,0,out.width,out.height);return out;
+
+function cropGroup(
+  c,
+  g
+){
+
+  const xs =
+    g.items.map(x => x.x);
+
+  const ys =
+    g.items.map(x => x.y);
+
+  const minX =
+    Math.max(
+      0,
+      Math.floor(
+        Math.min(...xs) -
+        Math.max(
+          45,
+          c.width * .035
+        )
+      )
+    );
+
+  const maxX =
+    Math.min(
+      c.width,
+      Math.ceil(
+        Math.max(...xs) +
+        Math.max(
+          45,
+          c.width * .035
+        )
+      )
+    );
+
+  const minY =
+    Math.max(
+      0,
+      Math.floor(
+        Math.min(...ys) -
+        Math.max(
+          55,
+          c.height * .04
+        )
+      )
+    );
+
+  const maxY =
+    Math.min(
+      c.height,
+      Math.ceil(
+        Math.max(...ys) +
+        Math.max(
+          55,
+          c.height * .04
+        )
+      )
+    );
+
+  const out =
+    document.createElement(
+      'canvas'
+    );
+
+  out.width =
+    maxX - minX;
+
+  out.height =
+    maxY - minY;
+
+  out.getContext('2d')
+    .drawImage(
+      c,
+      minX,
+      minY,
+      out.width,
+      out.height,
+      0,
+      0,
+      out.width,
+      out.height
+    );
+
+  return out;
 }
-function combineCandidateText(items){return cleanOCR(items.map(x=>x.text).join(' '))}
+
+function combineCandidateText(items){
+
+  return cleanOCR(
+    items
+      .map(x => x.text)
+      .join(' ')
+  );
+}
+
 async function identifySpines(base){
-  const rotations=[0,90,-90];let clusters=[];
-  for(let i=0;i<rotations.length;i++){
-    setShelfStatus(`Reading shelf text (${i+1}/${rotations.length})…`,20+i*15);
-    const r=await ocrWords(base,rotations[i]);clusters.push({rotation:r.rotation,canvas:r.canvas,groups:clusterWords(r.words,r.canvas)});
+
+  const rotations =
+    [0,90,-90];
+
+  let clusters=[];
+
+  for(
+    let i=0;
+    i<rotations.length;
+    i++
+  ){
+
+    setShelfStatus(
+      `Reading shelf text (${i+1}/${rotations.length})…`,
+      20 + i * 15
+    );
+
+    const r =
+      await ocrWords(
+        base,
+        rotations[i]
+      );
+
+    clusters.push({
+      rotation:r.rotation,
+      canvas:r.canvas,
+      groups:
+        clusterWords(
+          r.words,
+          r.canvas
+        )
+    });
   }
-  // Prefer the rotation with the most useful groups.
-  clusters.sort((a,b)=>b.groups.length-a.groups.length);
-  const chosen=clusters[0];const results=[];
-  for(let i=0;i<Math.min(chosen.groups.length,20);i++){
-    const g=chosen.groups[i],raw=combineCandidateText(g.items);if(raw.length<3)continue;
-    const crop=cropGroup(chosen.canvas,g);
-    results.push({raw,crop});
+
+  clusters.sort(
+    (a,b) =>
+      b.groups.length -
+      a.groups.length
+  );
+
+  const chosen =
+    clusters[0];
+
+  const results=[];
+
+  for(
+    let i=0;
+    i<
+      Math.min(
+        chosen.groups.length,
+        20
+      );
+    i++
+  ){
+
+    const g =
+      chosen.groups[i];
+
+    const raw =
+      combineCandidateText(
+        g.items
+      );
+
+    if(raw.length < 3)
+      continue;
+
+    const crop =
+      cropGroup(
+        chosen.canvas,
+        g
+      );
+
+    results.push({
+      raw,
+      crop
+    });
   }
+
   return results;
 }
+
 async function searchShelfText(raw){
-  const words = raw.split(/\s+/).filter(w => w.length > 2);
-  const queries = [];
 
-  if (words.length >= 2) {
-    queries.push(words.slice(0, 7).join(' '));
+  const words =
+    raw
+      .split(/\s+/)
+      .filter(
+        w =>
+          w.length > 2
+      );
+
+  const queries=[];
+
+  if(words.length >= 2){
+
+    queries.push(
+      words
+        .slice(0,7)
+        .join(' ')
+    );
   }
 
-  if (words.length > 7) {
-    queries.push(words.slice(-7).join(' '));
+  if(words.length > 7){
+
+    queries.push(
+      words
+        .slice(-7)
+        .join(' ')
+    );
   }
 
-  let items = [];
+  let items=[];
 
-  // Try Google Books first
-  for (const q of queries) {
-    try {
-      items.push(...await googleBooks(q));
-    } catch (e) {
-      console.warn('Google Books Shelf Scan search failed:', e);
+  for(const q of queries){
+
+    try{
+
+      items.push(
+        ...await googleBooks(q)
+      );
+
+    }catch(e){
+
+      console.warn(
+        'Google Books Shelf Scan search failed:',
+        e
+      );
     }
   }
 
-  const unique = [];
-  const seen = new Set();
+  const unique=[];
+  const seen=
+    new Set();
 
-  for (const it of items) {
-    const id = it.id || JSON.stringify(it.volumeInfo);
+  for(const it of items){
 
-    if (!seen.has(id)) {
+    const id =
+      it.id ||
+      JSON.stringify(
+        it.volumeInfo
+      );
+
+    if(!seen.has(id)){
+
       seen.add(id);
+
       unique.push(it);
     }
   }
 
-  unique.sort((a, b) => {
-    const av = a.volumeInfo || {};
-    const bv = b.volumeInfo || {};
+  unique.sort(
+    (a,b) => {
 
-    const as = scoreText(
-      raw,
-      (av.title || '') + ' ' + (av.authors || []).join(' ')
-    );
+      const av =
+        a.volumeInfo || {};
 
-    const bs = scoreText(
-      raw,
-      (bv.title || '') + ' ' + (bv.authors || []).join(' ')
-    );
+      const bv =
+        b.volumeInfo || {};
 
-    return bs - as;
-  });
+      const as =
+        scoreText(
+          raw,
+          (av.title || '') +
+          ' ' +
+          (av.authors || [])
+            .join(' ')
+        );
 
-  const results = unique
-    .slice(0, 4)
-    .map(it => gbToBook(it, raw));
+      const bs =
+        scoreText(
+          raw,
+          (bv.title || '') +
+          ' ' +
+          (bv.authors || [])
+            .join(' ')
+        );
 
-  // If Google Books gave us a match with a cover, use it.
-  if (results.some(b => b.cover)) {
+      return bs - as;
+    }
+  );
+
+  const results =
+    unique
+      .slice(0,4)
+      .map(
+        it =>
+          gbToBook(
+            it,
+            raw
+          )
+      );
+
+  if(
+    results.some(
+      b => b.cover
+    )
+  ){
     return results;
   }
 
-  // Google Books found no usable cover.
-  // Try Open Library using the title/author text.
-  try {
+  try{
+
     const searchUrl =
       'https://openlibrary.org/search.json?q=' +
       encodeURIComponent(raw) +
       '&limit=5';
 
-    const response = await fetch(searchUrl);
-
-    if (response.ok) {
-      const data = await response.json();
-
-      const match = data.docs?.find(item =>
-        item.cover_i ||
-        item.isbn?.length
+    const response =
+      await fetch(
+        searchUrl
       );
 
-      if (match) {
-        let isbn = '';
+    if(response.ok){
 
-        if (Array.isArray(match.isbn)) {
+      const data =
+        await response.json();
+
+      const match =
+        data.docs?.find(
+          item =>
+            item.cover_i ||
+            item.isbn?.length
+        );
+
+      if(match){
+
+        let isbn='';
+
+        if(
+          Array.isArray(
+            match.isbn
+          )
+        ){
+
           isbn =
-            match.isbn.find(x => String(x).length === 13) ||
+            match.isbn.find(
+              x =>
+                String(x)
+                  .length === 13
+            ) ||
             match.isbn[0] ||
             '';
         }
 
-        const title = match.title || '';
-        const author = Array.isArray(match.author_name)
-          ? match.author_name.join(', ')
-          : '';
+        const title =
+          match.title || '';
 
-        let cover = '';
+        const author =
+          Array.isArray(
+            match.author_name
+          )
+            ? match.author_name.join(', ')
+            : '';
 
-        if (match.cover_i) {
+        let cover='';
+
+        if(match.cover_i){
+
           cover =
             `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg`;
-        } else if (isbn) {
+
+        }else if(isbn){
+
           cover =
             `https://covers.openlibrary.org/b/isbn/${normalizeISBN(isbn)}-L.jpg`;
         }
 
-        if (title || author || cover) {
+        if(
+          title ||
+          author ||
+          cover
+        ){
+
           return [{
-            isbn: normalizeISBN(isbn),
+            isbn:
+              normalizeISBN(isbn),
+
             title,
+
             author,
+
             cover,
-            publisher: Array.isArray(match.publisher)
-              ? match.publisher[0] || ''
-              : '',
-            year: match.first_publish_year
-              ? String(match.first_publish_year)
-              : '',
-            description: '',
+
+            publisher:
+              Array.isArray(
+                match.publisher
+              )
+                ? match.publisher[0] || ''
+                : '',
+
+            year:
+              match.first_publish_year
+                ? String(
+                    match.first_publish_year
+                  )
+                : '',
+
+            description:'',
             raw
           }];
         }
       }
     }
-  } catch (e) {
-    console.warn('Open Library Shelf Scan fallback failed:', e);
+
+  }catch(e){
+
+    console.warn(
+      'Open Library Shelf Scan fallback failed:',
+      e
+    );
   }
 
   return results;
 }
-async function shelfProcess(file) {
-  $('#shelfWork').classList.remove('hidden');
-  $('#shelfResults').innerHTML = '';
-  $('#ocrDebug').classList.add('hidden');
-  shelfCandidates = [];
 
-  try {
-    setShelfStatus('Preparing shelf photo…', 10);
 
-    const im = await imageFromFile(file);
-    const base = canvasFromImage(im, 1500);
-    const imageData = base.toDataURL('image/jpeg', 0.85);
+/* =========================================================
+   SHELF PROCESS
+========================================================= */
 
-    $('#shelfPreview').src = imageData;
+async function shelfProcess(file){
 
-    setShelfStatus('AI is examining your bookshelf…', 30);
-
-    const response = await fetch(
-      'https://bookshelf-ai.shanksvr.workers.dev',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          image: imageData,
-          mimeType: 'image/jpeg'
-        })
-      }
+  $('#shelfWork')
+    .classList.remove(
+      'hidden'
     );
 
-    const result = await response.json();
+  $('#shelfResults')
+    .innerHTML='';
 
-    if (!response.ok) {
+  $('#ocrDebug')
+    .classList.add(
+      'hidden'
+    );
+
+  shelfCandidates=[];
+
+  try{
+
+    setShelfStatus(
+      'Preparing shelf photo…',
+      10
+    );
+
+    const im =
+      await imageFromFile(
+        file
+      );
+
+    const base =
+      canvasFromImage(
+        im,
+        1500
+      );
+
+    const imageData =
+      base.toDataURL(
+        'image/jpeg',
+        0.85
+      );
+
+    $('#shelfPreview')
+      .src =
+      imageData;
+
+    setShelfStatus(
+      'AI is examining your bookshelf…',
+      30
+    );
+
+    const response =
+      await fetch(
+        'https://bookshelf-ai.shanksvr.workers.dev',
+        {
+          method:'POST',
+          headers:{
+            'Content-Type':
+              'application/json'
+          },
+          body:JSON.stringify({
+            image:imageData,
+            mimeType:'image/jpeg'
+          })
+        }
+      );
+
+    const result =
+      await response.json();
+
+    if(!response.ok){
+
       throw new Error(
-        result.details || result.error || 'AI recognition failed'
+        result.details ||
+        result.error ||
+        'AI recognition failed'
       );
     }
 
-    if (!result.success || !Array.isArray(result.books)) {
-      throw new Error('Unexpected response from AI service.');
+    if(
+      !result.success ||
+      !Array.isArray(
+        result.books
+      )
+    ){
+
+      throw new Error(
+        'Unexpected response from AI service.'
+      );
     }
 
-    const books = result.books;
-    let debug = [];
+    const shelfBooks =
+      result.books;
+
+    let debug=[];
 
     setShelfStatus(
-      `AI identified ${books.length} possible books. Checking book database…`,
+      `AI identified ${shelfBooks.length} possible books. Checking book database…`,
       60
     );
 
-    for (let i = 0; i < books.length; i++) {
-      const book = books[i];
+    for(
+      let i=0;
+      i<shelfBooks.length;
+      i++
+    ){
 
-      const title = (book.title || '').trim();
-      const author = (book.author || '').trim();
+      const book =
+        shelfBooks[i];
 
-      if (!title) continue;
+      const title =
+        (book.title || '')
+          .trim();
 
-      const raw = book.evidence ||
+      const author =
+        (book.author || '')
+          .trim();
+
+      if(!title)
+        continue;
+
+      const raw =
+        book.evidence ||
         `${title}${author ? ' — ' + author : ''}`;
 
       debug.push(
@@ -787,49 +2788,81 @@ async function shelfProcess(file) {
       );
 
       setShelfStatus(
-        `Looking up ${i + 1} of ${books.length}: ${title}…`,
-        60 + ((i + 1) / Math.max(books.length, 1)) * 35
+        `Looking up ${i + 1} of ${shelfBooks.length}: ${title}…`,
+        60 +
+        ((i + 1) /
+          Math.max(
+            shelfBooks.length,
+            1
+          )) *
+        35
       );
 
-      const matches = await searchShelfText(
-        `${title} ${author}`
-      );
-
-      if (matches.length) {
-        const best = matches[0];
-
-        const score = scoreText(
-          `${title} ${author}`,
-          `${best.title} ${best.author}`
+      const matches =
+        await searchShelfText(
+          `${title} ${author}`
         );
 
-        const existing = isDuplicate(
-          best.isbn || book.isbn,
-          best.title,
-          best.author
-        );
+      if(matches.length){
+
+        const best =
+          matches[0];
+
+        const score =
+          scoreText(
+            `${title} ${author}`,
+            `${best.title} ${best.author}`
+          );
+
+        const existing =
+          isDuplicate(
+            best.isbn ||
+            book.isbn,
+            best.title,
+            best.author
+          );
 
         shelfCandidates.push({
+
           ...best,
+
           raw,
+
           score,
-          aiConfidence: book.confidence,
+
+          aiConfidence:
+            book.confidence,
+
           existing,
-          selected: !existing ||
+
+          selected:
+            !existing ||
             existing.status === 'Want to Buy'
         });
 
-      } else {
+      }else{
+
         shelfCandidates.push({
+
           title,
+
           author,
-          isbn: book.isbn || '',
-          cover: '',
+
+          isbn:
+            book.isbn || '',
+
+          cover:'',
+
           raw,
-          score: 0,
-          aiConfidence: book.confidence,
-          selected: false,
-          needsSearch: true
+
+          score:0,
+
+          aiConfidence:
+            book.confidence,
+
+          selected:false,
+
+          needsSearch:true
         });
       }
     }
@@ -840,123 +2873,522 @@ async function shelfProcess(file) {
     );
 
     $('#ocrDebug').innerHTML =
-      `<div class="debugBox">
-        <details>
-          <summary>Show AI recognition results</summary>
-          <div class="debugText">${esc(debug.join('\n'))}</div>
-        </details>
-      </div>`;
+      `
+        <div class="debugBox">
 
-    $('#ocrDebug').classList.remove('hidden');
+          <details>
+
+            <summary>
+              Show AI recognition results
+            </summary>
+
+            <div class="debugText">
+              ${esc(debug.join('\n'))}
+            </div>
+
+          </details>
+
+        </div>
+      `;
+
+    $('#ocrDebug')
+      .classList.remove(
+        'hidden'
+      );
 
     renderShelfResults();
 
-  } catch (e) {
+  }catch(e){
+
     console.error(e);
 
-    setShelfStatus('Shelf scan could not complete.', 0);
+    setShelfStatus(
+      'Shelf scan could not complete.',
+      0
+    );
 
     $('#shelfResults').innerHTML =
-      `<div class="empty">
-        <b>Could not scan this photo</b>
-        <span>${esc(e.message || 'Please try again.')}</span>
-      </div>`;
+      `
+        <div class="empty">
+
+          <b>
+            Could not scan this photo
+          </b>
+
+          <span>
+            ${esc(
+              e.message ||
+              'Please try again.'
+            )}
+          </span>
+
+        </div>
+      `;
   }
 }
 
+
+/* =========================================================
+   SHELF RESULTS
+========================================================= */
+
 function renderShelfResults(){
-  if(!shelfCandidates.length){$('#shelfResults').innerHTML=`<div class="empty"><b>No book regions detected</b><span>Try moving closer so the spines fill more of the photo.</span></div>`;return}
-  let html=`<div class="shelfToolbar"><button onclick="selectAllShelf(true)">Select all</button><button onclick="selectAllShelf(false)">Clear all</button></div>`;
-  shelfCandidates.forEach((b,i)=>{
-    let conf=b.score>=.55?'High confidence':b.score>=.3?'Possible match':'Low confidence',cl=b.score>=.55?'confHigh':b.score>=.3?'confMed':'confLow';
-    let state=b.existing?(b.existing.status==='Owned'?'Already in your library':'Already on Want to Buy'):'';
-    html+=`<div class="resultCard"><div class="resultTop">${b.cover?`<img class="resultCover" src="${esc(b.cover)}">`:`<div class="resultCover noCover">No cover</div>`}<div class="resultInfo"><div class="resultTitle">${esc(b.title||'Possible book match')}</div><div class="resultAuthor">${esc(b.author||'')}</div><span class="confidence ${cl}">${conf}</span>${state?`<div class="resultAuthor"><b>${esc(state)}</b></div>`:''}</div></div><div class="ocrRead">Read: ${esc(b.raw)}</div><div class="resultActions">${b.existing&&b.existing.status==='Owned'?`<button class="skipBtn" disabled>Already Owned</button>`:`<button class="addBtn" onclick="toggleShelf(${i})">${b.selected?'✓ Selected':'Select'}</button>`}${b.needsSearch?`<button class="searchBtn" onclick="manualShelfSearch(${i})">Search</button>`:`<button class="searchBtn" onclick="toggleShelf(${i})">${b.selected?'Deselect':'Select'}</button>`}</div></div>`;
+
+  if(!shelfCandidates.length){
+
+    $('#shelfResults').innerHTML =
+      `
+        <div class="empty">
+
+          <b>
+            No book regions detected
+          </b>
+
+          <span>
+            Try moving closer so the spines fill more of the photo.
+          </span>
+
+        </div>
+      `;
+
+    return;
+  }
+
+  let html =
+    `
+      <div class="shelfToolbar">
+
+        <button
+          onclick="selectAllShelf(true)"
+        >
+          Select all
+        </button>
+
+        <button
+          onclick="selectAllShelf(false)"
+        >
+          Clear all
+        </button>
+
+      </div>
+    `;
+
+  shelfCandidates.forEach(
+    (b,i) => {
+
+      let conf =
+        b.score >= .55
+          ? 'High confidence'
+          : b.score >= .3
+            ? 'Possible match'
+            : 'Low confidence';
+
+      let cl =
+        b.score >= .55
+          ? 'confHigh'
+          : b.score >= .3
+            ? 'confMed'
+            : 'confLow';
+
+      let state =
+        b.existing
+          ? (
+              b.existing.status === 'Owned'
+                ? 'Already in your library'
+                : 'Already on Want to Buy'
+            )
+          : '';
+
+      html +=
+        `
+          <div class="resultCard">
+
+            <div class="resultTop">
+
+              ${
+                b.cover
+                  ?
+                  `<img class="resultCover" src="${esc(b.cover)}">`
+                  :
+                  `<div class="resultCover noCover">
+                    No cover
+                  </div>`
+              }
+
+              <div class="resultInfo">
+
+                <div class="resultTitle">
+                  ${esc(
+                    b.title ||
+                    'Possible book match'
+                  )}
+                </div>
+
+                <div class="resultAuthor">
+                  ${esc(
+                    b.author || ''
+                  )}
+                </div>
+
+                <span
+                  class="confidence ${cl}"
+                >
+                  ${conf}
+                </span>
+
+                ${
+                  state
+                    ?
+                    `
+                      <div class="resultAuthor">
+                        <b>
+                          ${esc(state)}
+                        </b>
+                      </div>
+                    `
+                    :
+                    ''
+                }
+
+              </div>
+
+            </div>
+
+            <div class="ocrRead">
+              Read: ${esc(b.raw)}
+            </div>
+
+            <div class="resultActions">
+
+              ${
+                b.existing &&
+                b.existing.status === 'Owned'
+                  ?
+                  `
+                    <button
+                      class="skipBtn"
+                      disabled
+                    >
+                      Already Owned
+                    </button>
+                  `
+                  :
+                  `
+                    <button
+                      class="addBtn"
+                      onclick="toggleShelf(${i})"
+                    >
+                      ${
+                        b.selected
+                          ? '✓ Selected'
+                          : 'Select'
+                      }
+                    </button>
+                  `
+              }
+
+              ${
+                b.needsSearch
+                  ?
+                  `
+                    <button
+                      class="searchBtn"
+                      onclick="manualShelfSearch(${i})"
+                    >
+                      Search
+                    </button>
+                  `
+                  :
+                  `
+                    <button
+                      class="searchBtn"
+                      onclick="toggleShelf(${i})"
+                    >
+                      ${
+                        b.selected
+                          ? 'Deselect'
+                          : 'Select'
+                      }
+                    </button>
+                  `
+              }
+
+            </div>
+
+          </div>
+        `;
+    }
+  );
+
+  html +=
+    `
+      <button
+        class="primary big"
+        onclick="addSelectedShelf()"
+        style="margin-top:8px"
+      >
+        Add Selected to Owned
+      </button>
+    `;
+
+  $('#shelfResults')
+    .innerHTML =
+    html;
+}
+
+function toggleShelf(i){
+
+  if(
+    shelfCandidates[i].existing &&
+    shelfCandidates[i].existing.status === 'Owned'
+  ){
+    return;
+  }
+
+  shelfCandidates[i].selected =
+    !shelfCandidates[i].selected;
+
+  renderShelfResults();
+}
+
+function selectAllShelf(v){
+
+  shelfCandidates.forEach(x => {
+
+    if(
+      !(
+        x.existing &&
+        x.existing.status === 'Owned'
+      )
+    ){
+
+      x.selected=v;
+    }
   });
-  html+=`<button class="primary big" onclick="addSelectedShelf()" style="margin-top:8px">Add Selected to Owned</button>`;
-  $('#shelfResults').innerHTML=html;
+
+  renderShelfResults();
 }
-function toggleShelf(i){if(shelfCandidates[i].existing&&shelfCandidates[i].existing.status==='Owned')return;shelfCandidates[i].selected=!shelfCandidates[i].selected;renderShelfResults()}
-function selectAllShelf(v){shelfCandidates.forEach(x=>{if(!(x.existing&&x.existing.status==='Owned'))x.selected=v});renderShelfResults()}
+
 function manualShelfSearch(i){
-  const q=prompt('Enter the title or author for this book:',shelfCandidates[i].raw||'');if(!q)return;
-  googleBooks(q).then(items=>{if(!items.length){alert('No matches found.');return}const b=gbToBook(items[0],shelfCandidates[i].raw);b.score=scoreText(shelfCandidates[i].raw,b.title+' '+b.author);b.existing=isDuplicate(b.isbn,b.title,b.author);b.selected=!b.existing;shelfCandidates[i]=b;renderShelfResults()}).catch(()=>alert('Book search failed.'))
+
+  const q =
+    prompt(
+      'Enter the title or author for this book:',
+      shelfCandidates[i].raw || ''
+    );
+
+  if(!q)
+    return;
+
+  googleBooks(q)
+    .then(items => {
+
+      if(!items.length){
+
+        alert(
+          'No matches found.'
+        );
+
+        return;
+      }
+
+      const b =
+        gbToBook(
+          items[0],
+          shelfCandidates[i].raw
+        );
+
+      b.score =
+        scoreText(
+          shelfCandidates[i].raw,
+          b.title +
+          ' ' +
+          b.author
+        );
+
+      b.existing =
+        isDuplicate(
+          b.isbn,
+          b.title,
+          b.author
+        );
+
+      b.selected =
+        !b.existing;
+
+      shelfCandidates[i]=b;
+
+      renderShelfResults();
+
+    })
+    .catch(() =>
+      alert(
+        'Book search failed.'
+      )
+    );
 }
-  async function addSelectedShelf(){
-  const selected = shelfCandidates.filter(b => b.selected === true);
 
-  let added = 0;
-  let moved = 0;
-  let skipped = 0;
-  let coverUploads = 0;
 
-  for (const b of selected) {
-    if (!b.title || !String(b.title).trim()) {
+/* =========================================================
+   ADD SHELF BOOKS
+========================================================= */
+
+async function addSelectedShelf(){
+
+  const selected =
+    shelfCandidates.filter(
+      b =>
+        b.selected === true
+    );
+
+  let added=0;
+  let moved=0;
+  let skipped=0;
+  let coverUploads=0;
+
+  for(const b of selected){
+
+    if(
+      !b.title ||
+      !String(b.title).trim()
+    ){
+
       skipped++;
+
       continue;
     }
 
-    const existing = isDuplicate(
-      b.isbn || '',
-      b.title || '',
-      b.author || ''
-    );
+    const existing =
+      isDuplicate(
+        b.isbn || '',
+        b.title || '',
+        b.author || ''
+      );
 
-    if (existing) {
-      if (existing.status === 'Want to Buy') {
-        existing.status = 'Owned';
-        existing.added = Date.now();
+    if(existing){
+
+      if(
+        existing.status === 'Want to Buy'
+      ){
+
+        existing.status='Owned';
+        existing.added =
+          Date.now();
+
         moved++;
-      } else if (existing.status === 'Owned') {
+
+      }else if(
+        existing.status === 'Owned'
+      ){
+
         skipped++;
-      } else {
-        existing.status = 'Owned';
-        existing.added = Date.now();
+
+      }else{
+
+        existing.status='Owned';
+        existing.added =
+          Date.now();
+
         moved++;
       }
+
       continue;
     }
 
     const newBook = {
-      id: crypto.randomUUID(),
-      isbn: normalizeISBN(b.isbn || ''),
-      title: String(b.title || '').trim(),
-      author: String(b.author || 'Unknown author').trim(),
-      cover: b.cover || '',
-      publisher: b.publisher || '',
-      year: b.year || '',
-      description: b.description || '',
-      status: 'Owned',
-      added: Date.now(),
-      store: '',
-      price: '',
-      notes: b.raw
-        ? `Added from Shelf Scan. Scan text: ${b.raw}`
-        : ''
+
+      id:
+        crypto.randomUUID(),
+
+      isbn:
+        normalizeISBN(
+          b.isbn || ''
+        ),
+
+      title:
+        String(
+          b.title || ''
+        ).trim(),
+
+      author:
+        String(
+          b.author ||
+          'Unknown author'
+        ).trim(),
+
+      cover:
+        b.cover || '',
+
+      publisher:
+        b.publisher || '',
+
+      year:
+        b.year || '',
+
+      description:
+        b.description || '',
+
+      status:
+        'Owned',
+
+      added:
+        Date.now(),
+
+      store:'',
+      price:'',
+
+      notes:
+        b.raw
+          ?
+          `Added from Shelf Scan. Scan text: ${b.raw}`
+          :
+          ''
     };
 
-    if (newBook.cover) {
-      setShelfStatus(`Saving cover for ${newBook.title}…`, 95);
+    if(newBook.cover){
 
-      try {
-        const { data, error } = await supabaseClient.functions.invoke(
-          'import-book-cover',
-          {
-            body: {
-              coverUrl: newBook.cover
+      setShelfStatus(
+        `Saving cover for ${newBook.title}…`,
+        95
+      );
+
+      try{
+
+        const {
+          data,
+          error
+        } =
+          await supabaseClient.functions.invoke(
+            'import-book-cover',
+            {
+              body:{
+                coverUrl:
+                  newBook.cover
+              }
             }
-          }
-        );
+          );
 
-        if (error) throw error;
+        if(error)
+          throw error;
 
-        if (!data?.success || !data.cover) {
-          throw new Error(data?.error || 'Cover upload failed');
+        if(
+          !data?.success ||
+          !data.cover
+        ){
+
+          throw new Error(
+            data?.error ||
+            'Cover upload failed'
+          );
         }
 
-        newBook.cover = data.cover;
+        newBook.cover =
+          data.cover;
+
         coverUploads++;
 
-      } catch (coverError) {
+      }catch(coverError){
+
         console.error(
           'Could not upload Shelf Scan cover:',
           newBook.title,
@@ -965,532 +3397,1302 @@ function manualShelfSearch(i){
       }
     }
 
-    books.unshift(newBook);
+    books.unshift(
+      newBook
+    );
+
     added++;
   }
-    
 
   save();
 
   alert(
     `${added} book${added === 1 ? '' : 's'} added to Owned.` +
-    `${moved ? ` ${moved} existing book${moved === 1 ? '' : 's'} moved to Owned.` : ''}` +
-    `${skipped ? ` ${skipped} skipped.` : ''}` +
-    `${coverUploads ? ` ${coverUploads} cover${coverUploads === 1 ? '' : 's'} saved to Supabase.` : ''}`
+    `${
+      moved
+        ? ` ${moved} existing book${moved === 1 ? '' : 's'} moved to Owned.`
+        : ''
+    }` +
+    `${
+      skipped
+        ? ` ${skipped} skipped.`
+        : ''
+    }` +
+    `${
+      coverUploads
+        ? ` ${coverUploads} cover${coverUploads === 1 ? '' : 's'} saved to Supabase.`
+        : ''
+    }`
   );
 
   nav('library');
 }
-/* ---------- Supabase account login ---------- */
-function showAuthStatus(message, isError=false) {
-  const status = document.querySelector('#authStatus');
-  if (!status) return;
-  status.textContent = message;
-  status.style.color = isError ? '#a33' : '#68727a';
+
+
+/* =========================================================
+   SUPABASE ACCOUNT LOGIN
+========================================================= */
+
+function showAuthStatus(
+  message,
+  isError=false
+){
+
+  const status =
+    document.querySelector(
+      '#authStatus'
+    );
+
+  if(!status)
+    return;
+
+  status.textContent =
+    message;
+
+  status.style.color =
+    isError
+      ? '#a33'
+      : '#68727a';
 }
 
-async function showAppAfterLogin() {
-  try {
-    const { data: sessionData, error: sessionError } =
+async function showAppAfterLogin(){
+
+  try{
+
+    const {
+      data:sessionData,
+      error:sessionError
+    } =
       await supabaseClient.auth.getSession();
 
-    if (sessionError) throw sessionError;
+    if(sessionError)
+      throw sessionError;
 
-    const user = sessionData.session?.user;
-    if (!user) return;
-    KEY = `bookshelf_books_${user.id}`;
-$('#accountEmail').textContent = user.email || 'Email unavailable';
-$('#settingsEmail').textContent = user.email || 'Email unavailable';
-    books = [];
+    const user =
+      sessionData.session?.user;
 
-    const { data: cloudBooks, error } = await supabaseClient
-      .from('books')
-      .select('*')
-      .eq('user_id', user.id);
+    if(!user)
+      return;
 
-    if (error) throw error;
+    KEY =
+      `bookshelf_books_${user.id}`;
 
-    books = cloudBooks.map(book => ({
-      id: book.local_id || book.id,
-      cloudId: book.id,
-      isbn: book.isbn,
-      title: book.title,
-      author: book.author,
-      cover: book.cover,
-      publisher: book.publisher,
-      year: book.year,
-      description: book.description,
-      status: book.status,
-      added: book.added,
-      store: book.store,
-      price: book.price,
-      notes: book.notes
-    }));
+    $('#accountEmail')
+      .textContent =
+      user.email ||
+      'Email unavailable';
 
-    localStorage.setItem(KEY, JSON.stringify(books));
-    startRealtimeSync(user);
-    document.body.classList.remove('auth-locked');
-    document.querySelectorAll('.screen').forEach(x => x.classList.remove('active'));
-    $('#home').classList.add('active');
-    $$('nav button').forEach(x =>
-      x.classList.toggle('active', x.dataset.nav === 'home')
+    $('#settingsEmail')
+      .textContent =
+      user.email ||
+      'Email unavailable';
+
+    books=[];
+
+    const {
+      data:cloudBooks,
+      error
+    } =
+      await supabaseClient
+        .from('books')
+        .select('*')
+        .eq('user_id',user.id);
+
+    if(error)
+      throw error;
+
+    books =
+      cloudBooks.map(
+        book => ({
+          id:
+            book.local_id ||
+            book.id,
+
+          cloudId:
+            book.id,
+
+          isbn:
+            book.isbn,
+
+          title:
+            book.title,
+
+          author:
+            book.author,
+
+          cover:
+            book.cover,
+
+          publisher:
+            book.publisher,
+
+          year:
+            book.year,
+
+          description:
+            book.description,
+
+          status:
+            book.status,
+
+          added:
+            book.added,
+
+          store:
+            book.store,
+
+          price:
+            book.price,
+
+          notes:
+            book.notes
+        })
+      );
+
+    localStorage.setItem(
+      KEY,
+      JSON.stringify(
+        books
+      )
     );
+
+    startRealtimeSync(
+      user
+    );
+
+    document.body
+      .classList.remove(
+        'auth-locked'
+      );
+
+    document
+      .querySelectorAll(
+        '.screen'
+      )
+      .forEach(
+        x =>
+          x.classList.remove(
+            'active'
+          )
+      );
+
+    $('#home')
+      .classList.add(
+        'active'
+      );
+
+    $$('nav button')
+      .forEach(x =>
+        x.classList.toggle(
+          'active',
+          x.dataset.nav === 'home'
+        )
+      );
 
     renderAll();
 
-  } catch (error) {
-    console.error('Cloud library download failed:', error);
-    alert('Could not load your cloud library. Please try again.');
+  }catch(error){
+
+    console.error(
+      'Cloud library download failed:',
+      error
+    );
+
+    alert(
+      'Could not load your cloud library. Please try again.'
+    );
   }
 }
 
+function showLoginScreen(){
 
-function showLoginScreen() {
-  document.body.classList.add('auth-locked');
-  document.querySelectorAll('.screen').forEach(x => x.classList.remove('active'));
-  $('#auth').classList.add('active');
+  document.body
+    .classList.add(
+      'auth-locked'
+    );
+
+  document
+    .querySelectorAll(
+      '.screen'
+    )
+    .forEach(
+      x =>
+        x.classList.remove(
+          'active'
+        )
+    );
+
+  $('#auth')
+    .classList.add(
+      'active'
+    );
 }
 
-async function signIn() {
-  const email = $('#authEmail').value.trim();
-  const password = $('#authPassword').value;
+async function signIn(){
 
-  if (!email || !password) {
-    showAuthStatus('Enter your email and password.', true);
+  const email =
+    $('#authEmail')
+      .value.trim();
+
+  const password =
+    $('#authPassword')
+      .value;
+
+  if(!email || !password){
+
+    showAuthStatus(
+      'Enter your email and password.',
+      true
+    );
+
     return;
   }
 
-  $('#signInBtn').disabled = true;
-  showAuthStatus('Signing in…');
+  $('#signInBtn')
+    .disabled=true;
 
-  try {
-    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+  showAuthStatus(
+    'Signing in…'
+  );
+
+  try{
+
+    const {
+      error
+    } =
+      await supabaseClient.auth
+        .signInWithPassword({
+          email,
+          password
+        });
+
+    if(error)
+      throw error;
+
     showAppAfterLogin();
+
     showAuthStatus('');
-  } catch (error) {
-    showAuthStatus(error.message || 'Could not sign in.', true);
-  } finally {
-    $('#signInBtn').disabled = false;
+
+  }catch(error){
+
+    showAuthStatus(
+      error.message ||
+      'Could not sign in.',
+      true
+    );
+
+  }finally{
+
+    $('#signInBtn')
+      .disabled=false;
   }
 }
 
-async function createAccount() {
-  const email = $('#authEmail').value.trim();
-  const password = $('#authPassword').value;
+async function createAccount(){
 
-  if (!email || !password) {
-    showAuthStatus('Enter your email and password to create your account.', true);
+  const email =
+    $('#authEmail')
+      .value.trim();
+
+  const password =
+    $('#authPassword')
+      .value;
+
+  if(!email || !password){
+
+    showAuthStatus(
+      'Enter your email and password to create your account.',
+      true
+    );
+
     return;
   }
 
-  if (password.length < 6) {
-    showAuthStatus('Use a password with at least 6 characters.', true);
+  if(password.length < 6){
+
+    showAuthStatus(
+      'Use a password with at least 6 characters.',
+      true
+    );
+
     return;
   }
 
-  $('#createAccountBtn').disabled = true;
-  showAuthStatus('Creating your account…');
+  $('#createAccountBtn')
+    .disabled=true;
 
-  try {
-    const { data, error } = await supabaseClient.auth.signUp({ email, password });
-    if (error) throw error;
+  showAuthStatus(
+    'Creating your account…'
+  );
 
-    if (data.session) {
+  try{
+
+    const {
+      data,
+      error
+    } =
+      await supabaseClient.auth
+        .signUp({
+          email,
+          password
+        });
+
+    if(error)
+      throw error;
+
+    if(data.session){
+
       showAppAfterLogin();
+
       showAuthStatus('');
-    } else {
-      showAuthStatus('Account created. Check your email for the confirmation link, then return here and sign in.');
+
+    }else{
+
+      showAuthStatus(
+        'Account created. Check your email for the confirmation link, then return here and sign in.'
+      );
     }
-  } catch (error) {
-    showAuthStatus(error.message || 'Could not create your account.', true);
-  } finally {
-    $('#createAccountBtn').disabled = false;
+
+  }catch(error){
+
+    showAuthStatus(
+      error.message ||
+      'Could not create your account.',
+      true
+    );
+
+  }finally{
+
+    $('#createAccountBtn')
+      .disabled=false;
   }
 }
 
-$('#signInBtn').onclick = signIn;
-$('#createAccountBtn').onclick = createAccount;
-$('#signOutBtn').onclick = async () => {
-  if (!confirm('Are you sure you want to sign out?')) return;
+$('#signInBtn')
+  .onclick =
+  signIn;
 
-  const { error } = await supabaseClient.auth.signOut();
+$('#createAccountBtn')
+  .onclick =
+  createAccount;
 
-  if (error) {
-    alert('Could not sign out: ' + error.message);
-  }
-};
+$('#signOutBtn')
+  .onclick =
+  async () => {
 
-$('#authPassword').addEventListener('keydown', e => {
-  if (e.key === 'Enter') signIn();
-});
+    if(!confirm(
+      'Are you sure you want to sign out?'
+    )){
+      return;
+    }
 
-document.body.classList.add('auth-locked');
+    const {
+      error
+    } =
+      await supabaseClient.auth
+        .signOut();
+
+    if(error){
+
+      alert(
+        'Could not sign out: ' +
+        error.message
+      );
+    }
+  };
+
+$('#authPassword')
+  .addEventListener(
+    'keydown',
+    e => {
+
+      if(e.key === 'Enter')
+        signIn();
+    }
+  );
+
+document.body
+  .classList.add(
+    'auth-locked'
+  );
+
 showLoginScreen();
 
-supabaseClient.auth.onAuthStateChange((event, session) => {
-  if (session) showAppAfterLogin();
-  else if (event === 'SIGNED_OUT') showLoginScreen();
-});
+supabaseClient.auth
+  .onAuthStateChange(
+    (event,session) => {
 
-supabaseClient.auth.getSession().then(({ data, error }) => {
-  if (error) {
-    showAuthStatus(error.message, true);
-    return;
-  }
-  if (data.session) showAppAfterLogin();
-  else showLoginScreen();
-});
+      if(session)
+        showAppAfterLogin();
 
-/* ---------- LIBRARY SHARING ---------- */
+      else if(
+        event === 'SIGNED_OUT'
+      )
+        showLoginScreen();
+    }
+  );
 
-async function getCurrentUser() {
-  const { data, error } = await supabaseClient.auth.getSession();
-  if (error) throw error;
-  return data.session?.user;
-}
+supabaseClient.auth
+  .getSession()
+  .then(
+    ({data,error}) => {
 
-async function loadSharing() {
-  const user = await getCurrentUser();
-  if (!user) return;
+      if(error){
 
-  const incoming = $('#incomingInvitations');
-  const shared = $('#sharedWithMe');
-  const outgoing = $('#myShares');
-
-  incoming.innerHTML = '<p>Loading...</p>';
-  shared.innerHTML = '<p>Loading...</p>';
-  outgoing.innerHTML = '<p>Loading...</p>';
-
-  try {
-    const { data: invitations, error: inviteError } =
-      await supabaseClient
-        .from('library_shares')
-        .select('*')
-        .eq('shared_with_id', user.id)
-        .eq('status', 'pending');
-
-    if (inviteError) throw inviteError;
-
-    incoming.innerHTML = invitations.length
-      ? invitations.map(s => `
-          <div class="settingsCard">
-            <div>
-              <b>${esc(s.owner_email || 'BookShelf user')}</b>
-              <p>Invited you to view their library.</p>
-              <button class="primary" onclick="acceptLibraryInvite('${s.id}')">
-                Accept Invitation
-              </button>
-            </div>
-          </div>
-        `).join('')
-      : '<p>No pending invitations.</p>';
-
-    const { data: accepted, error: acceptedError } =
-      await supabaseClient
-        .from('library_shares')
-        .select('*')
-        .eq('shared_with_id', user.id)
-        .eq('status', 'accepted');
-
-    if (acceptedError) throw acceptedError;
-
-    shared.innerHTML = accepted.length
-      ? accepted.map(s => `
-          <div class="settingsCard">
-            <div>
-              <b>${esc(s.owner_email || 'BookShelf user')}</b>
-              <p>Shared library</p>
-              <button class="primary"
-                onclick="viewSharedLibrary('${s.owner_id}')">
-                View Library
-              </button>
-            </div>
-          </div>
-        `).join('')
-      : '<p>No libraries are currently shared with you.</p>';
-
-    const { data: outgoingShares, error: outgoingError } =
-      await supabaseClient
-        .from('library_shares')
-        .select('*')
-        .eq('owner_id', user.id);
-
-    if (outgoingError) throw outgoingError;
-
-    outgoing.innerHTML = outgoingShares.length
-      ? outgoingShares.map(s => `
-          <div class="settingsCard">
-            <div>
-              <b>${esc(s.shared_with_email || 'BookShelf user')}</b>
-              <p>Status: ${esc(s.status)}</p>
-              <button class="settingsSignOut"
-                onclick="revokeLibraryShare('${s.id}')">
-                Revoke Access
-              </button>
-            </div>
-          </div>
-        `).join('')
-      : '<p>You have not shared your library with anyone yet.</p>';
-
-  } catch (error) {
-    console.error('Sharing load failed:', error);
-    incoming.innerHTML = '<p>Could not load sharing information.</p>';
-    shared.innerHTML = '';
-    outgoing.innerHTML = '';
-  }
-}
-
-async function sendLibraryInvite() {
-  const email = $('#inviteEmail').value.trim();
-  const status = $('#inviteStatus');
-
-  if (!email) {
-    status.textContent = 'Enter an email address first.';
-    return;
-  }
-
-  status.textContent = 'Sending invitation...';
-
-  try {
-    const { error } = await supabaseClient.rpc(
-      'invite_library_user',
-      { invitee_email: email }
-    );
-
-    if (error) throw error;
-
-    status.textContent = 'Invitation sent successfully!';
-    $('#inviteEmail').value = '';
-
-    await loadSharing();
-
-  } catch (error) {
-    console.error('Invitation failed:', error);
-    status.textContent = error.message || 'Could not send invitation.';
-  }
-}
-
-async function acceptLibraryInvite(shareId) {
-  try {
-    const { error } = await supabaseClient.rpc(
-      'accept_library_invitation',
-      { share_id: shareId }
-    );
-
-    if (error) throw error;
-
-    alert('Invitation accepted!');
-    await loadSharing();
-
-  } catch (error) {
-    console.error('Accept invitation failed:', error);
-    alert(error.message || 'Could not accept invitation.');
-  }
-}
-
-async function revokeLibraryShare(shareId) {
-  if (!confirm("Revoke this person's access to your library?")) return;
-
-  try {
-    const { error } = await supabaseClient
-      .from('library_shares')
-      .delete()
-      .eq('id', shareId);
-
-    if (error) throw error;
-
-    alert('Library access revoked.');
-    await loadSharing();
-
-  } catch (error) {
-    console.error('Revoke sharing failed:', error);
-    alert(error.message || 'Could not revoke access.');
-  }
-}
-
-async function viewSharedLibrary(ownerId) {
-  const container = $('#sharedWithMe');
-
-  container.innerHTML = '<p>Loading shared books...</p>';
-
-  try {
-    const { data: sharedBooks, error } = await supabaseClient
-      .from('books')
-      .select('*')
-      .eq('user_id', ownerId);
-
-    if (error) throw error;
-
-    const books = sharedBooks || [];
-
-    container.innerHTML = `
-      <button class="secondary" onclick="loadSharing()">
-        ‹ Back to Shared Libraries
-      </button>
-
-      <input
-        id="sharedLibrarySearch"
-        type="search"
-        placeholder="Search title, author, or ISBN..."
-        style="width:100%;padding:12px;margin:15px 0;border-radius:8px;box-sizing:border-box;"
-      >
-
-      <div id="sharedBookResults" class="bookgrid"></div>
-    `;
-
-    const searchInput = $('#sharedLibrarySearch');
-    const resultsContainer = $('#sharedBookResults');
-
-    function renderSharedBooks(searchTerm = '') {
-      const term = searchTerm.toLowerCase().trim();
-
-      const filteredBooks = books.filter(book => {
-        return (
-          String(book.title || '').toLowerCase().includes(term) ||
-          String(book.author || '').toLowerCase().includes(term) ||
-          String(book.isbn || '').toLowerCase().includes(term)
+        showAuthStatus(
+          error.message,
+          true
         );
-      });
 
-      if (!filteredBooks.length) {
-        resultsContainer.innerHTML = term
-          ? '<p>No matching books found.</p>'
-          : '<p>This library is currently empty.</p>';
         return;
       }
 
-      resultsContainer.innerHTML = filteredBooks.map(book => `
-        <article class="book">
-          ${book.cover
-            ? `<img class="cover" src="${esc(book.cover)}" alt="${esc(book.title)} cover">`
-            : `<div class="cover noCover">No cover image</div>`
-          }
+      if(data.session)
+        showAppAfterLogin();
 
-          <div class="bookInfo">
-            <div class="bookTitle">${esc(book.title)}</div>
-            <div class="author">${esc(book.author || 'Unknown author')}</div>
-            <span class="badge">${esc(book.status || 'Owned')}</span>
-          </div>
-        </article>
-      `).join('');
+      else
+        showLoginScreen();
+    }
+  );
+
+
+/* =========================================================
+   LIBRARY SHARING
+========================================================= */
+
+async function getCurrentUser(){
+
+  const {
+    data,
+    error
+  } =
+    await supabaseClient.auth
+      .getSession();
+
+  if(error)
+    throw error;
+
+  return data.session?.user;
+}
+
+async function loadSharing(){
+
+  const user =
+    await getCurrentUser();
+
+  if(!user)
+    return;
+
+  const incoming =
+    $('#incomingInvitations');
+
+  const shared =
+    $('#sharedWithMe');
+
+  const outgoing =
+    $('#myShares');
+
+  incoming.innerHTML =
+    '<p>Loading...</p>';
+
+  shared.innerHTML =
+    '<p>Loading...</p>';
+
+  outgoing.innerHTML =
+    '<p>Loading...</p>';
+
+  try{
+
+    const {
+      data:invitations,
+      error:inviteError
+    } =
+      await supabaseClient
+        .from('library_shares')
+        .select('*')
+        .eq(
+          'shared_with_id',
+          user.id
+        )
+        .eq(
+          'status',
+          'pending'
+        );
+
+    if(inviteError)
+      throw inviteError;
+
+    incoming.innerHTML =
+      invitations.length
+        ?
+        invitations
+          .map(
+            s =>
+              `
+                <div class="settingsCard">
+
+                  <div>
+
+                    <b>
+                      ${esc(
+                        s.owner_email ||
+                        'BookShelf user'
+                      )}
+                    </b>
+
+                    <p>
+                      Invited you to view their library.
+                    </p>
+
+                    <button
+                      class="primary"
+                      onclick="acceptLibraryInvite('${s.id}')"
+                    >
+                      Accept Invitation
+                    </button>
+
+                  </div>
+
+                </div>
+              `
+          )
+          .join('')
+        :
+        '<p>No pending invitations.</p>';
+
+    const {
+      data:accepted,
+      error:acceptedError
+    } =
+      await supabaseClient
+        .from('library_shares')
+        .select('*')
+        .eq(
+          'shared_with_id',
+          user.id
+        )
+        .eq(
+          'status',
+          'accepted'
+        );
+
+    if(acceptedError)
+      throw acceptedError;
+
+    shared.innerHTML =
+      accepted.length
+        ?
+        accepted
+          .map(
+            s =>
+              `
+                <div class="settingsCard">
+
+                  <div>
+
+                    <b>
+                      ${esc(
+                        s.owner_email ||
+                        'BookShelf user'
+                      )}
+                    </b>
+
+                    <p>
+                      Shared library
+                    </p>
+
+                    <button
+                      class="primary"
+                      onclick="viewSharedLibrary('${s.owner_id}')"
+                    >
+                      View Library
+                    </button>
+
+                  </div>
+
+                </div>
+              `
+          )
+          .join('')
+        :
+        '<p>No libraries are currently shared with you.</p>';
+
+    const {
+      data:outgoingShares,
+      error:outgoingError
+    } =
+      await supabaseClient
+        .from('library_shares')
+        .select('*')
+        .eq(
+          'owner_id',
+          user.id
+        );
+
+    if(outgoingError)
+      throw outgoingError;
+
+    outgoing.innerHTML =
+      outgoingShares.length
+        ?
+        outgoingShares
+          .map(
+            s =>
+              `
+                <div class="settingsCard">
+
+                  <div>
+
+                    <b>
+                      ${esc(
+                        s.shared_with_email ||
+                        'BookShelf user'
+                      )}
+                    </b>
+
+                    <p>
+                      Status:
+                      ${esc(s.status)}
+                    </p>
+
+                    <button
+                      class="settingsSignOut"
+                      onclick="revokeLibraryShare('${s.id}')"
+                    >
+                      Revoke Access
+                    </button>
+
+                  </div>
+
+                </div>
+              `
+          )
+          .join('')
+        :
+        '<p>You have not shared your library with anyone yet.</p>';
+
+  }catch(error){
+
+    console.error(
+      'Sharing load failed:',
+      error
+    );
+
+    incoming.innerHTML =
+      '<p>Could not load sharing information.</p>';
+
+    shared.innerHTML='';
+
+    outgoing.innerHTML='';
+  }
+}
+
+async function sendLibraryInvite(){
+
+  const email =
+    $('#inviteEmail')
+      .value.trim();
+
+  const status =
+    $('#inviteStatus');
+
+  if(!email){
+
+    status.textContent =
+      'Enter an email address first.';
+
+    return;
+  }
+
+  status.textContent =
+    'Sending invitation...';
+
+  try{
+
+    const {
+      error
+    } =
+      await supabaseClient.rpc(
+        'invite_library_user',
+        {
+          invitee_email:
+            email
+        }
+      );
+
+    if(error)
+      throw error;
+
+    status.textContent =
+      'Invitation sent successfully!';
+
+    $('#inviteEmail')
+      .value='';
+
+    await loadSharing();
+
+  }catch(error){
+
+    console.error(
+      'Invitation failed:',
+      error
+    );
+
+    status.textContent =
+      error.message ||
+      'Could not send invitation.';
+  }
+}
+
+async function acceptLibraryInvite(
+  shareId
+){
+
+  try{
+
+    const {
+      error
+    } =
+      await supabaseClient.rpc(
+        'accept_library_invitation',
+        {
+          share_id:
+            shareId
+        }
+      );
+
+    if(error)
+      throw error;
+
+    alert(
+      'Invitation accepted!'
+    );
+
+    await loadSharing();
+
+  }catch(error){
+
+    console.error(
+      'Accept invitation failed:',
+      error
+    );
+
+    alert(
+      error.message ||
+      'Could not accept invitation.'
+    );
+  }
+}
+
+async function revokeLibraryShare(
+  shareId
+){
+
+  if(!confirm(
+    "Revoke this person's access to your library?"
+  )){
+    return;
+  }
+
+  try{
+
+    const {
+      error
+    } =
+      await supabaseClient
+        .from('library_shares')
+        .delete()
+        .eq(
+          'id',
+          shareId
+        );
+
+    if(error)
+      throw error;
+
+    alert(
+      'Library access revoked.'
+    );
+
+    await loadSharing();
+
+  }catch(error){
+
+    console.error(
+      'Revoke sharing failed:',
+      error
+    );
+
+    alert(
+      error.message ||
+      'Could not revoke access.'
+    );
+  }
+}
+
+async function viewSharedLibrary(
+  ownerId
+){
+
+  const container =
+    $('#sharedWithMe');
+
+  container.innerHTML =
+    '<p>Loading shared books...</p>';
+
+  try{
+
+    const {
+      data:sharedBooks,
+      error
+    } =
+      await supabaseClient
+        .from('books')
+        .select('*')
+        .eq(
+          'user_id',
+          ownerId
+        );
+
+    if(error)
+      throw error;
+
+    const books =
+      sharedBooks || [];
+
+    container.innerHTML =
+      `
+
+        <button
+          class="secondary"
+          onclick="loadSharing()"
+        >
+          ‹ Back to Shared Libraries
+        </button>
+
+        <input
+          id="sharedLibrarySearch"
+          type="search"
+          placeholder="Search title, author, or ISBN..."
+          style="width:100%;padding:12px;margin:15px 0;border-radius:8px;box-sizing:border-box;"
+        >
+
+        <div
+          id="sharedBookResults"
+          class="bookgrid"
+        ></div>
+
+      `;
+
+    const searchInput =
+      $('#sharedLibrarySearch');
+
+    const resultsContainer =
+      $('#sharedBookResults');
+
+    function renderSharedBooks(
+      searchTerm=''
+    ){
+
+      const term =
+        searchTerm
+          .toLowerCase()
+          .trim();
+
+      const filteredBooks =
+        books.filter(
+          book =>
+            String(
+              book.title || ''
+            )
+              .toLowerCase()
+              .includes(term) ||
+
+            String(
+              book.author || ''
+            )
+              .toLowerCase()
+              .includes(term) ||
+
+            String(
+              book.isbn || ''
+            )
+              .toLowerCase()
+              .includes(term)
+        );
+
+      if(!filteredBooks.length){
+
+        resultsContainer.innerHTML =
+          term
+            ? '<p>No matching books found.</p>'
+            : '<p>This library is currently empty.</p>';
+
+        return;
+      }
+
+      resultsContainer.innerHTML =
+        filteredBooks
+          .map(
+            book =>
+              `
+                <article class="book">
+
+                  ${
+                    book.cover
+                      ?
+                      `
+                        <img
+                          class="cover"
+                          src="${esc(book.cover)}"
+                          alt="${esc(book.title)} cover"
+                        >
+                      `
+                      :
+                      `
+                        <div class="cover noCover">
+                          No cover image
+                        </div>
+                      `
+                  }
+
+                  <div class="bookInfo">
+
+                    <div class="bookTitle">
+                      ${esc(book.title)}
+                    </div>
+
+                    <div class="author">
+                      ${esc(
+                        book.author ||
+                        'Unknown author'
+                      )}
+                    </div>
+
+                    <span class="badge">
+                      ${esc(
+                        book.status ||
+                        'Owned'
+                      )}
+                    </span>
+
+                  </div>
+
+                </article>
+              `
+          )
+          .join('');
     }
 
-    searchInput.addEventListener('input', () => {
-      renderSharedBooks(searchInput.value);
-    });
+    searchInput.addEventListener(
+      'input',
+      () =>
+        renderSharedBooks(
+          searchInput.value
+        )
+    );
 
     renderSharedBooks();
 
-  } catch (error) {
-    console.error('Shared library load failed:', error);
+  }catch(error){
+
+    console.error(
+      'Shared library load failed:',
+      error
+    );
+
     container.innerHTML =
       '<p>Could not load this shared library. Access may have been revoked.</p>';
   }
 }
 
-/* events */
+
+/* =========================================================
+   EVENTS
+========================================================= */
 
 // SETTINGS NAVIGATION
-$('#settingsBtn').onclick = () => {
-  nav('settings');
-};
 
-$('#settingsBackBtn').onclick = () => {
-  nav('home');
-};
+$('#settingsBtn').onclick =
+  () => nav('settings');
 
-// LIBRARY SHARING NAVIGATION
-$('#manageSharingBtn').onclick = () => {
-  nav('sharing');
-  loadSharing();
-};
+$('#settingsBackBtn').onclick =
+  () => nav('home');
 
-$('#sharingBackBtn').onclick = () => {
-  nav('settings');
-};
 
-$('#sendInviteBtn').onclick = sendLibraryInvite;
-$$('nav button').forEach(b=>b.onclick=()=>b.dataset.nav==='scan'?startCamera():nav(b.dataset.nav));
-$('#scanHome').onclick=startCamera;$('#scanLib').onclick=startCamera;
-$('#shelfHome').onclick=()=>nav('shelf');$('#shelfLib').onclick=()=>nav('shelf');
-$('#closeScan').onclick=()=>nav('home');$('#closeShelf').onclick=()=>nav('home');
-$('#backDetails').onclick=()=>nav('library');$('#seeAll').onclick=()=>nav('library');
-$('#search').oninput=renderLibrary;
-$('#lookupManual').onclick=()=>lookup($('#manualIsbn').value);
+// LIBRARY SHARING
 
-$('#chooseShelf').onclick=()=>$('#shelfCamera').click();
-$('#uploadShelf').onclick=()=>$('#shelfFile').click();
+$('#manageSharingBtn').onclick =
+  () => {
 
-$('#shelfCamera').onchange=e=>{
-  if(e.target.files[0]) shelfProcess(e.target.files[0]);
-  e.target.value='';
-};
+    nav('sharing');
 
-$('#shelfFile').onchange=e=>{
-  if(e.target.files[0]) shelfProcess(e.target.files[0]);
-  e.target.value='';
-};$$('.chip').forEach(b=>b.onclick=()=>{$$('.chip').forEach(c=>c.classList.remove('active'));b.classList.add('active');currentFilter=b.dataset.filter;renderLibrary()});
-$$('.stats button').forEach(b=>b.onclick=()=>{currentFilter=b.dataset.filter;nav('library')});
+    loadSharing();
+  };
+
+$('#sharingBackBtn').onclick =
+  () => nav('settings');
+
+$('#sendInviteBtn').onclick =
+  sendLibraryInvite;
+
+
+// MAIN NAV
+
+$$('nav button')
+  .forEach(
+    b =>
+      b.onclick =
+        () =>
+          b.dataset.nav === 'scan'
+            ? startCamera()
+            : nav(b.dataset.nav)
+  );
+
+$('#scanHome')
+  .onclick =
+  startCamera;
+
+$('#scanLib')
+  .onclick =
+  startCamera;
+
+$('#shelfHome')
+  .onclick =
+  () => nav('shelf');
+
+$('#shelfLib')
+  .onclick =
+  () => nav('shelf');
+
+$('#closeScan')
+  .onclick =
+  () => nav('home');
+
+$('#closeShelf')
+  .onclick =
+  () => nav('home');
+
+$('#backDetails')
+  .onclick =
+  () => nav('library');
+
+$('#seeAll')
+  .onclick =
+  () => nav('library');
+
+$('#search')
+  .oninput =
+  renderLibrary;
+
+$('#lookupManual')
+  .onclick =
+  () =>
+    lookup(
+      $('#manualIsbn').value
+    );
+
+
+// SHELF
+
+$('#chooseShelf')
+  .onclick =
+  () =>
+    $('#shelfCamera')
+      .click();
+
+$('#uploadShelf')
+  .onclick =
+  () =>
+    $('#shelfFile')
+      .click();
+
+$('#shelfCamera')
+  .onchange =
+  e => {
+
+    if(e.target.files[0])
+      shelfProcess(
+        e.target.files[0]
+      );
+
+    e.target.value='';
+  };
+
+$('#shelfFile')
+  .onchange =
+  e => {
+
+    if(e.target.files[0])
+      shelfProcess(
+        e.target.files[0]
+      );
+
+    e.target.value='';
+  };
+
+$$('.chip')
+  .forEach(
+    b =>
+      b.onclick =
+        () => {
+
+          $$('.chip')
+            .forEach(
+              c =>
+                c.classList.remove(
+                  'active'
+                )
+            );
+
+          b.classList.add(
+            'active'
+          );
+
+          currentFilter =
+            b.dataset.filter;
+
+          renderLibrary();
+        }
+  );
+
+$$('.stats button')
+  .forEach(
+    b =>
+      b.onclick =
+        () => {
+
+          currentFilter =
+            b.dataset.filter;
+
+          nav('library');
+        }
+  );
+
 renderAll();
 
 
-async function recoverMissingCovers() {
-  console.log('Starting Supabase cover migration...');
+/* =========================================================
+   COVER MIGRATION
+========================================================= */
 
-  const { data: sessionData } =
-    await supabaseClient.auth.getSession();
+async function recoverMissingCovers(){
 
-  const user = sessionData.session?.user;
+  console.log(
+    'Starting Supabase cover migration...'
+  );
 
-  if (!user) {
-    console.error('You must be logged in.');
+  const {
+    data:sessionData
+  } =
+    await supabaseClient.auth
+      .getSession();
+
+  const user =
+    sessionData.session?.user;
+
+  if(!user){
+
+    console.error(
+      'You must be logged in.'
+    );
+
     return;
   }
 
-  const { data: allBooks, error } = await supabaseClient
-    .from('books')
-    .select('id, title, author, cover')
-    .eq('user_id', user.id);
+  const {
+    data:allBooks,
+    error
+  } =
+    await supabaseClient
+      .from('books')
+      .select(
+        'id,title,author,cover'
+      )
+      .eq(
+        'user_id',
+        user.id
+      );
 
-  if (error) {
-    console.error('Could not load books:', error);
+  if(error){
+
+    console.error(
+      'Could not load books:',
+      error
+    );
+
     return;
   }
 
- // Process every book that needs a cover migration.
-const booksToProcess = allBooks.filter(book =>
-  !book.cover || book.cover.includes('openlibrary.org')
-);
+  const booksToProcess =
+    allBooks.filter(
+      book =>
+        !book.cover ||
+        book.cover.includes(
+          'openlibrary.org'
+        )
+    );
 
-  console.log('Books to migrate:', booksToProcess.length);
+  console.log(
+    'Books to migrate:',
+    booksToProcess.length
+  );
 
-  let updated = 0;
+  let updated=0;
 
-  for (const book of booksToProcess) {
-    try {
-      let coverUrl = book.cover;
+  for(
+    const book of booksToProcess
+  ){
 
-      if (!coverUrl) {
+    try{
+
+      let coverUrl =
+        book.cover;
+
+      if(!coverUrl){
+
         const searchUrl =
           'https://openlibrary.org/search.json?title=' +
-          encodeURIComponent(book.title) +
+          encodeURIComponent(
+            book.title
+          ) +
           '&author=' +
-          encodeURIComponent(book.author || '') +
+          encodeURIComponent(
+            book.author || ''
+          ) +
           '&limit=5';
 
-        const response = await fetch(searchUrl);
+        const response =
+          await fetch(
+            searchUrl
+          );
 
-        if (!response.ok) {
-          console.log('Search failed:', book.title);
+        if(!response.ok){
+
+          console.log(
+            'Search failed:',
+            book.title
+          );
+
           continue;
         }
 
-        const results = await response.json();
-        const match = results.docs?.find(item => item.cover_i);
+        const results =
+          await response.json();
 
-        if (!match) {
-          console.log('No cover found:', book.title);
+        const match =
+          results.docs?.find(
+            item =>
+              item.cover_i
+          );
+
+        if(!match){
+
+          console.log(
+            'No cover found:',
+            book.title
+          );
+
           continue;
         }
 
@@ -1498,44 +4700,83 @@ const booksToProcess = allBooks.filter(book =>
           `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg`;
       }
 
-      const { data, error: uploadError } =
+      const {
+        data,
+        error:uploadError
+      } =
         await supabaseClient.functions.invoke(
           'import-book-cover',
           {
-            body: { coverUrl }
+            body:{
+              coverUrl
+            }
           }
         );
 
-      if (uploadError || !data?.success) {
+      if(
+        uploadError ||
+        !data?.success
+      ){
+
         console.error(
           'Image upload failed:',
           book.title,
-          uploadError || data?.error
+          uploadError ||
+          data?.error
         );
+
         continue;
       }
 
-      const { error: updateError } = await supabaseClient
-        .from('books')
-        .update({ cover: data.cover })
-        .eq('id', book.id)
-        .eq('user_id', user.id);
+      const {
+        error:updateError
+      } =
+        await supabaseClient
+          .from('books')
+          .update({
+            cover:
+              data.cover
+          })
+          .eq(
+            'id',
+            book.id
+          )
+          .eq(
+            'user_id',
+            user.id
+          );
 
-      if (updateError) {
-        console.error('Database update failed:', updateError);
+      if(updateError){
+
+        console.error(
+          'Database update failed:',
+          updateError
+        );
+
         continue;
       }
 
       updated++;
-      console.log('Supabase cover saved:', book.title);
 
-    } catch (err) {
-      console.error('Migration failed:', book.title, err);
+      console.log(
+        'Supabase cover saved:',
+        book.title
+      );
+
+    }catch(err){
+
+      console.error(
+        'Migration failed:',
+        book.title,
+        err
+      );
     }
   }
 
-  console.log(`Migration finished. Updated ${updated} books.`);
+  console.log(
+    `Migration finished. Updated ${updated} books.`
+  );
 }
 
-window.recoverMissingCovers = recoverMissingCovers;
-
+window.recoverMissingCovers =
+  recoverMissingCovers;
