@@ -74,6 +74,65 @@ let shelfCandidates=[], shelfWorker=null;
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let cloudSaveTimer;
 
+// Shelf Scan upload notification state
+let shelfAddInProgress = false;
+let shelfToastTimer = null;
+
+
+/* =========================================================
+   APP NOTIFICATIONS
+========================================================= */
+
+function showAppNotification(message, type='info', duration=0){
+
+  let toast = document.getElementById('appNotification');
+
+  if(!toast){
+
+    toast = document.createElement('div');
+    toast.id = 'appNotification';
+
+    toast.style.cssText = `
+      position:fixed;
+      left:50%;
+      bottom:90px;
+      transform:translateX(-50%);
+      z-index:99999;
+      width:max-content;
+      max-width:90%;
+      padding:14px 20px;
+      border-radius:12px;
+      background:#17212b;
+      color:white;
+      font-size:14px;
+      font-weight:600;
+      text-align:center;
+      box-shadow:0 4px 18px rgba(0,0,0,.25);
+      opacity:0;
+      transition:opacity .2s ease;
+      pointer-events:none;
+    `;
+
+    document.body.appendChild(toast);
+  }
+
+  clearTimeout(shelfToastTimer);
+
+  toast.style.background =
+    type === 'error' ? '#a83232' :
+    type === 'success' ? '#237747' :
+    '#17212b';
+
+  toast.textContent = message;
+  toast.style.opacity = '1';
+
+  if(duration > 0){
+    shelfToastTimer = setTimeout(() => {
+      toast.style.opacity = '0';
+    }, duration);
+  }
+}
+
 
 /* =========================================================
    SAVE / CLOUD SYNC
@@ -198,12 +257,63 @@ async function save(){
    NAVIGATION
 ========================================================= */
 
+function scrollActiveScreenToTop(){
+
+  const activeScreen =
+    document.querySelector('.screen.active');
+
+  window.scrollTo({
+    top:0,
+    behavior:'smooth'
+  });
+
+  if(activeScreen){
+
+    activeScreen.scrollTo({
+      top:0,
+      behavior:'smooth'
+    });
+
+    // Also reset an independently scrollable content area
+    // inside the active screen, if the layout uses one.
+    activeScreen.querySelectorAll('*').forEach(element => {
+
+      if(element.scrollHeight > element.clientHeight + 5){
+
+        const style = getComputedStyle(element);
+
+        if(
+          style.overflowY === 'auto' ||
+          style.overflowY === 'scroll'
+        ){
+          element.scrollTo({
+            top:0,
+            behavior:'smooth'
+          });
+        }
+      }
+    });
+  }
+}
+
 function nav(id){
+  const currentScreen =
+    document.querySelector('.screen.active');
+
+  // Tapping the already-active navigation item returns
+  // the current screen to its top instead of doing nothing.
+  if(currentScreen && currentScreen.id === id){
+    scrollActiveScreenToTop();
+    return;
+  }
 
   $$('.screen')
     .forEach(x => x.classList.remove('active'));
 
-  $('#'+id).classList.add('active');
+  const destination = $('#'+id);
+  if(!destination) return;
+
+  destination.classList.add('active');
 
   $$('nav button')
     .forEach(x =>
@@ -217,6 +327,13 @@ function nav(id){
     stopCamera();
 
   renderAll();
+
+  window.scrollTo({
+    top:0,
+    behavior:'auto'
+  });
+
+  destination.scrollTop = 0;
 }
 
 
@@ -557,13 +674,6 @@ function renderLibrary(){
 /*
    Uploads a selected image file directly from the browser
    to the user's Supabase Storage folder.
-
-   This is separate from import-book-cover because
-   import-book-cover is designed to download images from
-   approved external websites.
-
-   Manual photos never need to pass through that URL
-   allow-list.
 */
 
 async function uploadManualCover(file){
@@ -654,17 +764,6 @@ async function uploadManualCover(file){
   return publicUrl.publicUrl;
 }
 
-
-/*
-   Opens the camera/photo picker.
-
-   capture="environment" tells supported phones
-   to prefer the rear camera.
-
-   On desktop this normally gives the user a
-   normal file chooser instead.
-*/
-
 function openCoverCamera(){
 
   const input =
@@ -680,26 +779,10 @@ function openCoverCamera(){
     return;
   }
 
-  input.setAttribute(
-    'accept',
-    'image/*'
-  );
-
-  input.setAttribute(
-    'capture',
-    'environment'
-  );
-
+  input.setAttribute('accept','image/*');
+  input.setAttribute('capture','environment');
   input.click();
 }
-
-
-/*
-   This allows a normal saved image to be selected.
-
-   On phones, the same control can also open the camera
-   depending on the device/browser.
-*/
 
 function openCoverFilePicker(){
 
@@ -716,36 +799,20 @@ function openCoverFilePicker(){
     return;
   }
 
-  input.setAttribute(
-    'accept',
-    'image/*'
-  );
-
-  input.removeAttribute(
-    'capture'
-  );
-
+  input.setAttribute('accept','image/*');
+  input.removeAttribute('capture');
   input.click();
 }
-
-
-/*
-   Handles the actual image after the user
-   takes/selects it.
-*/
 
 async function handleManualCoverSelected(event){
 
   const input = event.target;
-
-  const file =
-    input.files && input.files[0];
+  const file = input.files && input.files[0];
 
   if(!file)
     return;
 
-  const bookId =
-    input.dataset.bookId;
+  const bookId = input.dataset.bookId;
 
   if(!bookId){
     alert('No book was selected.');
@@ -753,8 +820,7 @@ async function handleManualCoverSelected(event){
     return;
   }
 
-  const book =
-    books.find(x => x.id === bookId);
+  const book = books.find(x => x.id === bookId);
 
   if(!book){
     alert('Could not find that book.');
@@ -770,50 +836,34 @@ async function handleManualCoverSelected(event){
         btn.disabled = true;
       });
 
-    const status =
-      document.createElement('p');
-
-    status.id =
-      'coverUploadStatus';
-
+    const status = document.createElement('p');
+    status.id = 'coverUploadStatus';
     status.style.cssText =
       'margin:12px 0;color:#68727a;font-size:14px;';
-
-    status.textContent =
-      'Uploading cover…';
+    status.textContent = 'Uploading cover…';
 
     const existing =
-      $('#detailsContent')
-        .querySelector('#coverUploadStatus');
+      $('#detailsContent').querySelector('#coverUploadStatus');
 
     if(existing)
       existing.remove();
 
-    $('#detailsContent')
-      .insertBefore(
-        status,
-        $('#detailsContent').firstChild
-      );
+    $('#detailsContent').insertBefore(
+      status,
+      $('#detailsContent').firstChild
+    );
 
-    const newCover =
-      await uploadManualCover(file);
+    const newCover = await uploadManualCover(file);
 
-    book.cover =
-      newCover;
-
+    book.cover = newCover;
     await save();
 
-    status.textContent =
-      'Cover saved successfully.';
-
+    status.textContent = 'Cover saved successfully.';
     showDetails(book.id);
 
   }catch(error){
 
-    console.error(
-      'Manual cover upload failed:',
-      error
-    );
+    console.error('Manual cover upload failed:', error);
 
     alert(
       'Could not save the cover.\n\n' +
@@ -825,22 +875,16 @@ async function handleManualCoverSelected(event){
   }finally{
 
     input.value='';
-
   }
 }
-
-
 /* =========================================================
    BOOK DETAILS
 ========================================================= */
 
 function showDetails(id){
 
-  let b =
-    books.find(x => x.id === id);
-
-  if(!b)
-    return;
+  let b = books.find(x => x.id === id);
+  if(!b) return;
 
   $('#detailsContent').innerHTML = `
 
@@ -867,19 +911,11 @@ function showDetails(id){
 
       <div class="detailMeta">
 
-        <h2>
-          ${esc(b.title)}
-        </h2>
+        <h2>${esc(b.title)}</h2>
 
-        <p>
-          <b>
-            ${esc(b.author || 'Unknown author')}
-          </b>
-        </p>
+        <p><b>${esc(b.author || 'Unknown author')}</b></p>
 
-        <p>
-          ISBN: ${esc(b.isbn || '')}
-        </p>
+        <p>ISBN: ${esc(b.isbn || '')}</p>
 
         <p>
           ${esc(b.publisher || '')}
@@ -892,25 +928,14 @@ function showDetails(id){
 
     <div
       class="coverActions"
-      style="
-        display:flex;
-        gap:8px;
-        flex-wrap:wrap;
-        margin:14px 0;
-      "
+      style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;"
     >
 
-      <button
-        class="action"
-        onclick="openCoverCamera()"
-      >
+      <button class="action" onclick="openCoverCamera()">
         📷 Take Photo
       </button>
 
-      <button
-        class="action"
-        onclick="openCoverFilePicker()"
-      >
+      <button class="action" onclick="openCoverFilePicker()">
         🖼️ Choose Photo
       </button>
 
@@ -918,10 +943,7 @@ function showDetails(id){
         b.cover
           ?
           `
-          <button
-            class="action"
-            onclick="removeBookCover('${b.id}')"
-          >
+          <button class="action" onclick="removeBookCover('${b.id}')">
             Remove Cover
           </button>
           `
@@ -939,74 +961,48 @@ function showDetails(id){
       data-book-id="${esc(b.id)}"
     >
 
-    <div
-      class="detailActions"
-    >
+    <div class="detailActions">
 
-      <button
-        class="action primaryAction"
-        onclick="cycleStatus('${b.id}')"
-      >
+      <button class="action primaryAction" onclick="cycleStatus('${b.id}')">
         ${esc(b.status)}
       </button>
 
-      <button
-        class="action"
-        onclick="removeBook('${b.id}')"
-      >
+      <button class="action" onclick="removeBook('${b.id}')">
         Delete
       </button>
 
     </div>
 
     <div class="description">
-      ${esc(
-        b.description ||
-        'No description available.'
-      )}
+      ${esc(b.description || 'No description available.')}
     </div>
 
     <div class="field">
-
-      <label>
-        Where I bought it
-      </label>
-
+      <label>Where I bought it</label>
       <input
         id="storeField"
         value="${esc(b.store || '')}"
         placeholder="Bookstore, thrift store, etc."
       >
-
     </div>
 
     <div class="field">
-
-      <label>
-        Price paid
-      </label>
-
+      <label>Price paid</label>
       <input
         id="priceField"
         inputmode="decimal"
         value="${esc(b.price || '')}"
         placeholder="$0.00"
       >
-
     </div>
 
     <div class="field">
-
-      <label>
-        Personal notes
-      </label>
-
+      <label>Personal notes</label>
       <textarea
         id="notesField"
         rows="4"
         placeholder="Notes about this book..."
       >${esc(b.notes || '')}</textarea>
-
     </div>
 
     <button
@@ -1018,11 +1014,9 @@ function showDetails(id){
     </button>
   `;
 
-  const coverInput =
-    $('#manualCoverInput');
+  const coverInput = $('#manualCoverInput');
 
   if(coverInput){
-
     coverInput.addEventListener(
       'change',
       handleManualCoverSelected
@@ -1032,33 +1026,16 @@ function showDetails(id){
   nav('details');
 }
 
-
-/*
-   Removes the cover URL from the book.
-
-   The actual image remains in Supabase Storage for now.
-   This is intentional so we don't accidentally delete
-   a storage object that may still be referenced elsewhere.
-*/
-
 async function removeBookCover(id){
 
-  const book =
-    books.find(x => x.id === id);
+  const book = books.find(x => x.id === id);
+  if(!book) return;
 
-  if(!book)
+  if(!confirm('Remove the cover image from this book?'))
     return;
-
-  if(!confirm(
-    'Remove the cover image from this book?'
-  )){
-    return;
-  }
 
   book.cover='';
-
   await save();
-
   showDetails(id);
 }
 
@@ -1069,35 +1046,23 @@ async function removeBookCover(id){
 
 function saveDetails(id){
 
-  let b =
-    books.find(x => x.id === id);
+  let b = books.find(x => x.id === id);
+  if(!b) return;
 
-  if(!b)
-    return;
-
-  b.store =
-    $('#storeField').value;
-
-  b.price =
-    $('#priceField').value;
-
-  b.notes =
-    $('#notesField').value;
+  b.store = $('#storeField').value;
+  b.price = $('#priceField').value;
+  b.notes = $('#notesField').value;
 
   save();
 
   alert('Book updated.');
-
   showDetails(id);
 }
 
 function cycleStatus(id){
 
-  let b =
-    books.find(x => x.id === id);
-
-  if(!b)
-    return;
+  let b = books.find(x => x.id === id);
+  if(!b) return;
 
   let s = [
     'Owned',
@@ -1113,7 +1078,6 @@ function cycleStatus(id){
     ];
 
   save();
-
   showDetails(id);
 }
 
@@ -1124,17 +1088,11 @@ function cycleStatus(id){
 
 async function removeBook(id){
 
-  if(!confirm(
-    'Remove this book from your library?'
-  )){
+  if(!confirm('Remove this book from your library?'))
     return;
-  }
 
-  const book =
-    books.find(x => x.id === id);
-
-  if(!book)
-    return;
+  const book = books.find(x => x.id === id);
+  if(!book) return;
 
   try{
 
@@ -1143,14 +1101,12 @@ async function removeBook(id){
       const {
         data: sessionData,
         error: sessionError
-      } =
-        await supabaseClient.auth.getSession();
+      } = await supabaseClient.auth.getSession();
 
       if(sessionError)
         throw sessionError;
 
-      const user =
-        sessionData.session?.user;
+      const user = sessionData.session?.user;
 
       if(!user){
         throw new Error(
@@ -1158,9 +1114,7 @@ async function removeBook(id){
         );
       }
 
-      const {
-        error
-      } =
+      const { error } =
         await supabaseClient
           .from('books')
           .delete()
@@ -1171,19 +1125,13 @@ async function removeBook(id){
         throw error;
     }
 
-    books =
-      books.filter(x => x.id !== id);
-
+    books = books.filter(x => x.id !== id);
     save();
-
     nav('library');
 
   }catch(error){
 
-    console.error(
-      'Book deletion failed:',
-      error
-    );
+    console.error('Book deletion failed:', error);
 
     alert(
       'Could not delete this book. Please try again.'
@@ -1197,22 +1145,15 @@ async function removeBook(id){
 ========================================================= */
 
 function cleanISBN(v){
-
   return String(v || '')
     .replace(/[^0-9Xx]/g,'')
     .toUpperCase();
 }
 
 function isbn10to13(isbn){
-
-  isbn =
-    cleanISBN(isbn);
-
-  if(isbn.length !== 10)
-    return isbn;
-
-  return '978' +
-    isbn.slice(0,9);
+  isbn = cleanISBN(isbn);
+  if(isbn.length !== 10) return isbn;
+  return '978' + isbn.slice(0,9);
 }
 
 function isbn13Check(s){
@@ -1220,24 +1161,17 @@ function isbn13Check(s){
   let sum=0;
 
   for(let i=0;i<12;i++)
-    sum += Number(s[i]) *
-      (i % 2 ? 3 : 1);
+    sum += Number(s[i]) * (i % 2 ? 3 : 1);
 
-  return String(
-    (10 - (sum % 10)) % 10
-  ) === s[12];
+  return String((10 - (sum % 10)) % 10) === s[12];
 }
 
 function normalizeISBN(isbn){
 
-  isbn =
-    cleanISBN(isbn);
+  isbn = cleanISBN(isbn);
 
   if(isbn.length === 10){
-
-    let base =
-      isbn10to13(isbn);
-
+    let base = isbn10to13(isbn);
     if(/^\d{13}$/.test(base))
       return base;
   }
@@ -1245,19 +1179,13 @@ function normalizeISBN(isbn){
   return isbn;
 }
 
-function isDuplicate(
-  isbn,
-  title,
-  author
-){
+function isDuplicate(isbn,title,author){
 
-  const ni =
-    normalizeISBN(isbn);
+  const ni = normalizeISBN(isbn);
 
   return books.find(b => {
 
-    const bi =
-      normalizeISBN(b.isbn);
+    const bi = normalizeISBN(b.isbn);
 
     if(
       ni &&
@@ -1266,16 +1194,13 @@ function isDuplicate(
     ){
       return b;
     }
-
-    return (
+        return (
       title &&
       author &&
       b.title &&
       b.author &&
-      b.title.toLowerCase().trim() ===
-        title.toLowerCase().trim() &&
-      b.author.toLowerCase().trim() ===
-        author.toLowerCase().trim()
+      b.title.toLowerCase().trim() === title.toLowerCase().trim() &&
+      b.author.toLowerCase().trim() === author.toLowerCase().trim()
     );
   });
 }
@@ -1292,73 +1217,40 @@ async function googleBooks(q){
     '?maxResults=8&q=' +
     encodeURIComponent(q);
 
-  const r =
-    await fetch(url);
+  const r = await fetch(url);
 
   if(!r.ok)
-    throw new Error(
-      'Google Books unavailable'
-    );
+    throw new Error('Google Books unavailable');
 
-  const d =
-    await r.json();
-
+  const d = await r.json();
   return d.items || [];
 }
 
 function gbToBook(item,ocr=''){
 
-  const v =
-    item.volumeInfo || {};
-
-  const ids =
-    v.industryIdentifiers || [];
+  const v = item.volumeInfo || {};
+  const ids = v.industryIdentifiers || [];
 
   const isbn =
     (
-      ids.find(
-        x => x.type === 'ISBN_13'
-      ) ||
-      ids.find(
-        x => x.type === 'ISBN_10'
-      ) ||
+      ids.find(x => x.type === 'ISBN_13') ||
+      ids.find(x => x.type === 'ISBN_10') ||
       {}
     ).identifier || '';
 
   return {
-
-    isbn:
-      normalizeISBN(isbn),
-
-    title:
-      v.title || '',
-
-    author:
-      (v.authors || [])
-        .join(', '),
-
-    cover:
-      (
-        v.imageLinks?.thumbnail ||
-        v.imageLinks?.smallThumbnail ||
-        ''
-      )
-      .replace(
-        /^http:/,
-        'https:'
-      ) ||
+    isbn: normalizeISBN(isbn),
+    title: v.title || '',
+    author: (v.authors || []).join(', '),
+    cover: (
+      v.imageLinks?.thumbnail ||
       v.imageLinks?.smallThumbnail ||
-      '',
-
-    publisher:
-      v.publisher || '',
-
-    year:
-      v.publishedDate || '',
-
-    description:
-      v.description || '',
-
+      ''
+    ).replace(/^http:/,'https:') ||
+      v.imageLinks?.smallThumbnail || '',
+    publisher: v.publisher || '',
+    year: v.publishedDate || '',
+    description: v.description || '',
     ocr
   };
 }
@@ -1368,43 +1260,23 @@ function gbToBook(item,ocr=''){
    BOOK LOOKUP
 ========================================================= */
 
-async function lookup(
-  isbn,
-  statusChoice='Owned'
-){
+async function lookup(isbn,statusChoice='Owned'){
 
-  isbn =
-    cleanISBN(isbn);
+  isbn = cleanISBN(isbn);
 
-  if(
-    isbn.length !== 10 &&
-    isbn.length !== 13
-  ){
-
-    alert(
-      'Please enter a valid ISBN-10 or ISBN-13.'
-    );
-
+  if(isbn.length !== 10 && isbn.length !== 13){
+    alert('Please enter a valid ISBN-10 or ISBN-13.');
     return;
   }
 
-  let normalized =
-    normalizeISBN(isbn);
+  let normalized = normalizeISBN(isbn);
 
-  let existing =
-    isDuplicate(
-      normalized,
-      '',
-      ''
-    );
+  let existing = isDuplicate(normalized,'','');
 
   if(existing){
 
     await stopCamera();
-
-    showDetails(
-      existing.id
-    );
+    showDetails(existing.id);
 
     alert(
       existing.status === 'Owned'
@@ -1423,17 +1295,9 @@ async function lookup(
     let item=null;
 
     try{
-
-      let results =
-        await googleBooks(
-          'isbn:' + normalized
-        );
-
-      item =
-        results[0] || null;
-
+      let results = await googleBooks('isbn:' + normalized);
+      item = results[0] || null;
     }catch(googleError){
-
       console.warn(
         'Google Books unavailable. Trying Open Library.',
         googleError
@@ -1444,88 +1308,46 @@ async function lookup(
 
     if(!item){
 
-      let r =
-        await fetch(
-          'https://openlibrary.org/isbn/' +
-          encodeURIComponent(normalized) +
-          '.json'
-        );
+      let r = await fetch(
+        'https://openlibrary.org/isbn/' +
+        encodeURIComponent(normalized) +
+        '.json'
+      );
 
       if(!r.ok)
-        throw new Error(
-          'Book not found'
-        );
+        throw new Error('Book not found');
 
-      let d =
-        await r.json();
-
+      let d = await r.json();
       let desc='';
-
-      let works =
-        d.works?.[0]?.key;
+      let works = d.works?.[0]?.key;
 
       if(works){
-
         try{
-
-          let wd =
-            await (
-              await fetch(
-                'https://openlibrary.org' +
-                works +
-                '.json'
-              )
-            ).json();
+          let wd = await (
+            await fetch('https://openlibrary.org' + works + '.json')
+          ).json();
 
           desc =
             typeof wd.description === 'string'
               ? wd.description
-              : (
-                  wd.description?.value ||
-                  ''
-                );
-
+              : (wd.description?.value || '');
         }catch(e){}
       }
 
       b = {
-
-        id:
-          crypto.randomUUID(),
-
-        isbn:
-          normalized,
-
-        title:
-          d.title ||
-          'Unknown title',
-
-        author:
-          (d.authors || [])
-            .map(a => a.name || '')
-            .filter(Boolean)
-            .join(','),
-
-        cover:
-          `https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg`,
-
-        publisher:
-          (d.publishers || [])[0] ||
-          '',
-
-        year:
-          d.publish_date ||
-          '',
-
-        description:
-          desc,
-
-        status:
-          statusChoice,
-
-        added:
-          Date.now(),
-
+        id: crypto.randomUUID(),
+        isbn: normalized,
+        title: d.title || 'Unknown title',
+        author: (d.authors || [])
+          .map(a => a.name || '')
+          .filter(Boolean)
+          .join(','),
+        cover: `https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg`,
+        publisher: (d.publishers || [])[0] || '',
+        year: d.publish_date || '',
+        description: desc,
+        status: statusChoice,
+        added: Date.now(),
         store:'',
         price:'',
         notes:''
@@ -1533,25 +1355,14 @@ async function lookup(
 
     }else{
 
-      b =
-        gbToBook(item);
-
-      b.id =
-        crypto.randomUUID();
-
-      b.status =
-        statusChoice;
-
-      b.added =
-        Date.now();
-
+      b = gbToBook(item);
+      b.id = crypto.randomUUID();
+      b.status = statusChoice;
+      b.added = Date.now();
       b.store='';
       b.price='';
       b.notes='';
     }
-
-
-    /* Upload automatic cover */
 
     if(b.cover){
 
@@ -1560,34 +1371,24 @@ async function lookup(
 
       try{
 
-        const {
-          data,
-          error
-        } =
+        const { data, error } =
           await supabaseClient.functions.invoke(
             'import-book-cover',
             {
-              body:{
-                coverUrl:b.cover
-              }
+              body:{coverUrl:b.cover}
             }
           );
 
         if(error)
           throw error;
 
-        if(
-          !data?.success ||
-          !data.cover
-        ){
+        if(!data?.success || !data.cover){
           throw new Error(
-            data?.error ||
-            'Cover upload failed'
+            data?.error || 'Cover upload failed'
           );
         }
 
-        b.cover =
-          data.cover;
+        b.cover = data.cover;
 
         console.log(
           'Book cover saved to Supabase:',
@@ -1595,7 +1396,6 @@ async function lookup(
         );
 
       }catch(coverError){
-
         console.error(
           'Could not upload book cover:',
           coverError
@@ -1604,19 +1404,14 @@ async function lookup(
     }
 
     books.unshift(b);
-
     save();
 
     await stopCamera();
-
     showDetails(b.id);
 
   }catch(e){
 
-    console.error(
-      'Book lookup failed:',
-      e
-    );
+    console.error('Book lookup failed:', e);
 
     $('#scanMsg').textContent =
       'Book not found. Try another angle or enter the ISBN manually.';
@@ -1633,7 +1428,6 @@ async function lookup(
 ========================================================= */
 
 function resetCandidate(){
-
   candidateISBN='';
   candidateHits=0;
   candidateSince=0;
@@ -1642,75 +1436,47 @@ function resetCandidate(){
 async function startCamera(){
 
   await stopCamera();
-
   nav('scan');
 
   scanLocked=false;
-
   resetCandidate();
 
-  $('#scanMsg').textContent =
-    'Starting camera…';
+  $('#scanMsg').textContent = 'Starting camera…';
 
-  const oldVideo =
-    $('#video');
-
-  if(!oldVideo)
-    return;
+  const oldVideo = $('#video');
+  if(!oldVideo) return;
 
   oldVideo.style.display='none';
 
-  const parent =
-    oldVideo.parentElement;
-
-  let prior =
-    $('#zxing-video');
+  const parent = oldVideo.parentElement;
+  let prior = $('#zxing-video');
 
   if(prior)
     prior.remove();
 
-  scanVideo =
-    document.createElement('video');
-
-  scanVideo.id =
-    'zxing-video';
-
-  scanVideo.setAttribute(
-    'playsinline',
-    'true'
-  );
-
-  scanVideo.setAttribute(
-    'autoplay',
-    'true'
-  );
-
+  scanVideo = document.createElement('video');
+  scanVideo.id = 'zxing-video';
+  scanVideo.setAttribute('playsinline','true');
+  scanVideo.setAttribute('autoplay','true');
   scanVideo.muted=true;
-
   scanVideo.style.cssText =
     'display:block;width:100%;height:100%;min-height:260px;object-fit:cover;border-radius:12px;background:#111';
 
-  parent.appendChild(
-    scanVideo
-  );
+  parent.appendChild(scanVideo);
 
   try{
 
-    $('#scanMsg').textContent =
-      'Loading barcode reader…';
+    $('#scanMsg').textContent = 'Loading barcode reader…';
 
-    const browserMod =
-      await import(
-        'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm'
-      );
+    const browserMod = await import(
+      'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm'
+    );
 
-    const libMod =
-      await import(
-        'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/+esm'
-      );
+    const libMod = await import(
+      'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/+esm'
+    );
 
-    const hints =
-      new Map();
+    const hints = new Map();
 
     hints.set(
       libMod.DecodeHintType.POSSIBLE_FORMATS,
@@ -1725,36 +1491,16 @@ async function startCamera(){
       true
     );
 
-    zxingReader =
-      new browserMod.BrowserMultiFormatReader(
-        hints,
-        120
-      );
+    zxingReader = new browserMod.BrowserMultiFormatReader(hints,120);
 
     const constraints = {
-
       audio:false,
-
       video:{
-        facingMode:{
-          ideal:'environment'
-        },
-
-        width:{
-          ideal:1920
-        },
-
-        height:{
-          ideal:1080
-        },
-
-        frameRate:{
-          ideal:30,
-          max:30
-        },
-
-        focusMode:
-          'continuous'
+        facingMode:{ideal:'environment'},
+        width:{ideal:1920},
+        height:{ideal:1080},
+        frameRate:{ideal:30,max:30},
+        focusMode:'continuous'
       }
     };
 
@@ -1764,52 +1510,35 @@ async function startCamera(){
         scanVideo,
         (result,error) => {
 
-          if(
-            scanLocked ||
-            !result
-          ){
+          if(scanLocked || !result)
             return;
-          }
 
-          const raw =
-            result.getText();
-
-          const isbn =
-            cleanISBN(raw);
+          const raw = result.getText();
+          const isbn = cleanISBN(raw);
 
           if(isbn.length !== 13)
             return;
 
-          const now =
-            Date.now();
+          const now = Date.now();
 
           if(
             isbn === candidateISBN &&
             now - candidateSince < 2200
           ){
             candidateHits++;
-
           }else{
-
-            candidateISBN =
-              isbn;
-
+            candidateISBN = isbn;
             candidateHits=1;
-
-            candidateSince =
-              now;
+            candidateSince = now;
           }
 
           $('#scanMsg').textContent =
             `Barcode detected — confirming ISBN (${Math.min(candidateHits,2)}/2). Hold steady.`;
 
           if(candidateHits >= 2){
-
             scanLocked=true;
-
             $('#scanMsg').textContent =
               'ISBN confirmed. Looking up book…';
-
             lookup(isbn);
           }
         }
@@ -1826,9 +1555,7 @@ async function startCamera(){
       'Could not start the scanner. Check camera permission, then refresh. You can enter the ISBN manually below.';
 
     if(scanVideo){
-
       scanVideo.remove();
-
       scanVideo=null;
     }
 
@@ -1839,54 +1566,39 @@ async function startCamera(){
 async function stopCamera(){
 
   if(scannerControls){
-
-    try{
-      scannerControls.stop();
-    }catch(e){}
-
+    try{scannerControls.stop();}catch(e){}
     scannerControls=null;
   }
 
   if(zxingReader){
-
-    try{
-      zxingReader.reset();
-    }catch(e){}
-
+    try{zxingReader.reset();}catch(e){}
     zxingReader=null;
   }
 
   if(scanVideo){
 
     try{
-
       scanVideo.pause();
 
       if(scanVideo.srcObject){
-
         scanVideo.srcObject
           .getTracks()
           .forEach(t => t.stop());
       }
-
     }catch(e){}
 
     scanVideo.remove();
-
     scanVideo=null;
   }
 
-  const oldVideo =
-    $('#video');
+  const oldVideo = $('#video');
 
   if(oldVideo){
-
     oldVideo.srcObject=null;
     oldVideo.style.display='';
   }
 
   resetCandidate();
-
   scanLocked=false;
 }
 
@@ -1896,294 +1608,132 @@ async function stopCamera(){
 ========================================================= */
 
 function setShelfStatus(msg,pct){
-
-  $('#shelfStatus').textContent =
-    msg;
-
-  $('#shelfProgress').style.width =
-    (pct || 0) + '%';
+  $('#shelfStatus').textContent = msg;
+  $('#shelfProgress').style.width = (pct || 0) + '%';
 }
 
 function imageFromFile(file){
 
-  return new Promise(
-    (res,rej) => {
+  return new Promise((res,rej) => {
 
-      const u =
-        URL.createObjectURL(file);
+    const u = URL.createObjectURL(file);
+    const im = new Image();
 
-      const im =
-        new Image();
+    im.onload = () => {
+      URL.revokeObjectURL(u);
+      res(im);
+    };
 
-      im.onload = () => {
-
-        URL.revokeObjectURL(u);
-
-        res(im);
-      };
-
-      im.onerror =
-        rej;
-
-      im.src=u;
-    }
-  );
+    im.onerror = rej;
+    im.src=u;
+  });
 }
 
-function canvasFromImage(
-  im,
-  maxW=1500
-){
+function canvasFromImage(im,maxW=1500){
 
-  const scale =
-    Math.min(
-      1,
-      maxW /
-      im.naturalWidth
-    );
+  const scale = Math.min(1,maxW / im.naturalWidth);
+  const c = document.createElement('canvas');
 
-  const c =
-    document.createElement('canvas');
+  c.width = Math.round(im.naturalWidth * scale);
+  c.height = Math.round(im.naturalHeight * scale);
 
-  c.width =
-    Math.round(
-      im.naturalWidth *
-      scale
-    );
-
-  c.height =
-    Math.round(
-      im.naturalHeight *
-      scale
-    );
-
-  c.getContext('2d')
-    .drawImage(
-      im,
-      0,
-      0,
-      c.width,
-      c.height
-    );
-
-  return c;
-}
-
-function rotateCanvas(
-  src,
-  deg
-){
-
-  const c =
-    document.createElement('canvas');
-
-  const ctx =
-    c.getContext('2d');
-
-  const r =
-    Math.abs(deg) % 180 === 90;
-
-  c.width =
-    r
-      ? src.height
-      : src.width;
-
-  c.height =
-    r
-      ? src.width
-      : src.height;
-
-  ctx.translate(
-    c.width / 2,
-    c.height / 2
-  );
-
-  ctx.rotate(
-    deg *
-    Math.PI /
-    180
-  );
-
-  ctx.drawImage(
-    src,
-    -src.width / 2,
-    -src.height / 2
+  c.getContext('2d').drawImage(
+    im,0,0,c.width,c.height
   );
 
   return c;
 }
 
-async function ocrWords(
-  c,
-  rotation
-){
+function rotateCanvas(src,deg){
 
-  const rc =
-    rotateCanvas(
-      c,
-      rotation
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d');
+  const r = Math.abs(deg) % 180 === 90;
+
+  c.width = r ? src.height : src.width;
+  c.height = r ? src.width : src.height;
+
+  ctx.translate(c.width / 2,c.height / 2);
+  ctx.rotate(deg * Math.PI / 180);
+  ctx.drawImage(src,-src.width / 2,-src.height / 2);
+
+  return c;
+}
+
+async function ocrWords(c,rotation){
+
+  const rc = rotateCanvas(c,rotation);
+
+  const result = await shelfWorker.recognize(
+    rc,
+    {rotateAuto:true}
+  );
+
+  const words = (result.data.words || [])
+    .filter(w =>
+      w.text &&
+      w.text.trim() &&
+      w.confidence >= 18
     );
 
-  const result =
-    await shelfWorker.recognize(
-      rc,
-      {
-        rotateAuto:true
-      }
-    );
-
-  const words =
-    (result.data.words || [])
-      .filter(
-        w =>
-          w.text &&
-          w.text.trim() &&
-          w.confidence >= 18
-      );
-
-  return {
-    rotation,
-    canvas:rc,
-    words,
-    result
-  };
+  return {rotation,canvas:rc,words,result};
 }
 
 function cleanOCR(s){
 
   return String(s || '')
-    .replace(
-      /[^A-Za-z0-9À-ÿ'&:,\- ]/g,
-      ' '
-    )
-    .replace(
-      /\s+/g,
-      ' '
-    )
+    .replace(/[^A-Za-z0-9À-ÿ'&:,\- ]/g,' ')
+    .replace(/\s+/g,' ')
     .trim();
 }
 
 function scoreText(a,b){
 
-  a =
-    cleanOCR(a)
-      .toLowerCase();
+  a = cleanOCR(a).toLowerCase();
+  b = cleanOCR(b).toLowerCase();
 
-  b =
-    cleanOCR(b)
-      .toLowerCase();
+  if(!a || !b) return 0;
 
-  if(!a || !b)
-    return 0;
-
-  const at =
-    new Set(
-      a.split(/\s+/)
-        .filter(x => x.length > 2)
-    );
-
-  const bt =
-    new Set(
-      b.split(/\s+/)
-        .filter(x => x.length > 2)
-    );
+  const at = new Set(a.split(/\s+/).filter(x => x.length > 2));
+  const bt = new Set(b.split(/\s+/).filter(x => x.length > 2));
 
   let hit=0;
+  at.forEach(x => {if(bt.has(x)) hit++;});
 
-  at.forEach(x => {
-
-    if(bt.has(x))
-      hit++;
-  });
-
-  return hit /
-    Math.max(
-      1,
-      Math.min(
-        at.size,
-        bt.size
-      )
-    );
+  return hit / Math.max(1,Math.min(at.size,bt.size));
 }
 
-function clusterWords(
-  words,
-  canvas
-){
+function clusterWords(words,canvas){
 
-  let arr =
-    words
-      .map(w => ({
-        x:
-          (w.bbox.x0 +
-           w.bbox.x1) / 2,
+  let arr = words
+    .map(w => ({
+      x:(w.bbox.x0 + w.bbox.x1) / 2,
+      y:(w.bbox.y0 + w.bbox.y1) / 2,
+      w:w.bbox.x1 - w.bbox.x0,
+      h:w.bbox.y1 - w.bbox.y0,
+      text:cleanOCR(w.text),
+      conf:w.confidence
+    }))
+    .filter(x => x.text.length >= 2);
 
-        y:
-          (w.bbox.y0 +
-           w.bbox.y1) / 2,
-
-        w:
-          w.bbox.x1 -
-          w.bbox.x0,
-
-        h:
-          w.bbox.y1 -
-          w.bbox.y0,
-
-        text:
-          cleanOCR(
-            w.text
-          ),
-
-        conf:
-          w.confidence
-      }))
-      .filter(
-        x =>
-          x.text.length >= 2
-      );
-
-  arr.sort(
-    (a,b) =>
-      a.x - b.x
-  );
+  arr.sort((a,b) => a.x - b.x);
 
   const groups=[];
-  const tolerance =
-    Math.max(
-      28,
-      canvas.width *
-      .035
-    );
+  const tolerance = Math.max(28,canvas.width * .035);
 
   for(const item of arr){
 
-    let g =
-      groups[
-        groups.length - 1
-      ];
+    let g = groups[groups.length - 1];
 
-    if(
-      !g ||
-      item.x - g.maxX >
-        tolerance
-    ){
-
+    if(!g || item.x - g.maxX > tolerance){
       groups.push({
         minX:item.x,
         maxX:item.x,
         items:[item]
       });
-
     }else{
-
       g.items.push(item);
-
-      g.maxX =
-        Math.max(
-          g.maxX,
-          item.x
-        );
+      g.maxX = Math.max(g.maxX,item.x);
     }
   }
 
@@ -2191,46 +1741,20 @@ function clusterWords(
 
   for(const g of groups){
 
-    const width =
-      g.maxX -
-      g.minX;
+    const width = g.maxX - g.minX;
+    const count = g.items.length;
 
-    const count =
-      g.items.length;
+    if(count >= 2 || width > 30){
 
-    if(
-      count >= 2 ||
-      width > 30
-    ){
-
-      const prev =
-        merged[
-          merged.length - 1
-        ];
+      const prev = merged[merged.length - 1];
 
       if(
         prev &&
-        g.minX -
-        prev.maxX <
-          Math.max(
-            35,
-            canvas.width *
-            .045
-          )
+        g.minX - prev.maxX < Math.max(35,canvas.width * .045)
       ){
-
-        prev.items.push(
-          ...g.items
-        );
-
-        prev.maxX =
-          Math.max(
-            prev.maxX,
-            g.maxX
-          );
-
+        prev.items.push(...g.items);
+        prev.maxX = Math.max(prev.maxX,g.maxX);
       }else{
-
         merged.push({
           minX:g.minX,
           maxX:g.maxX,
@@ -2243,178 +1767,98 @@ function clusterWords(
   return merged;
 }
 
-function cropGroup(
-  c,
-  g
-){
+function cropGroup(c,g){
 
-  const xs =
-    g.items.map(x => x.x);
+  const xs = g.items.map(x => x.x);
+  const ys = g.items.map(x => x.y);
 
-  const ys =
-    g.items.map(x => x.y);
+  const minX = Math.max(
+    0,
+    Math.floor(
+      Math.min(...xs) - Math.max(45,c.width * .035)
+    )
+  );
 
-  const minX =
-    Math.max(
-      0,
-      Math.floor(
-        Math.min(...xs) -
-        Math.max(
-          45,
-          c.width * .035
-        )
-      )
-    );
+  const maxX = Math.min(
+    c.width,
+    Math.ceil(
+      Math.max(...xs) + Math.max(45,c.width * .035)
+    )
+  );
 
-  const maxX =
-    Math.min(
-      c.width,
-      Math.ceil(
-        Math.max(...xs) +
-        Math.max(
-          45,
-          c.width * .035
-        )
-      )
-    );
+  const minY = Math.max(
+    0,
+    Math.floor(
+      Math.min(...ys) - Math.max(55,c.height * .04)
+    )
+  );
 
-  const minY =
-    Math.max(
-      0,
-      Math.floor(
-        Math.min(...ys) -
-        Math.max(
-          55,
-          c.height * .04
-        )
-      )
-    );
+  const maxY = Math.min(
+    c.height,
+    Math.ceil(
+      Math.max(...ys) + Math.max(55,c.height * .04)
+    )
+  );
 
-  const maxY =
-    Math.min(
-      c.height,
-      Math.ceil(
-        Math.max(...ys) +
-        Math.max(
-          55,
-          c.height * .04
-        )
-      )
-    );
+  const out = document.createElement('canvas');
+  out.width = maxX - minX;
+  out.height = maxY - minY;
 
-  const out =
-    document.createElement(
-      'canvas'
-    );
-
-  out.width =
-    maxX - minX;
-
-  out.height =
-    maxY - minY;
-
-  out.getContext('2d')
-    .drawImage(
-      c,
-      minX,
-      minY,
-      out.width,
-      out.height,
-      0,
-      0,
-      out.width,
-      out.height
-    );
+  out.getContext('2d').drawImage(
+    c,
+    minX,
+    minY,
+    out.width,
+    out.height,
+    0,
+    0,
+    out.width,
+    out.height
+  );
 
   return out;
 }
 
 function combineCandidateText(items){
-
-  return cleanOCR(
-    items
-      .map(x => x.text)
-      .join(' ')
-  );
+  return cleanOCR(items.map(x => x.text).join(' '));
 }
 
 async function identifySpines(base){
 
-  const rotations =
-    [0,90,-90];
-
+  const rotations = [0,90,-90];
   let clusters=[];
 
-  for(
-    let i=0;
-    i<rotations.length;
-    i++
-  ){
+  for(let i=0;i<rotations.length;i++){
 
     setShelfStatus(
       `Reading shelf text (${i+1}/${rotations.length})…`,
       20 + i * 15
     );
 
-    const r =
-      await ocrWords(
-        base,
-        rotations[i]
-      );
+    const r = await ocrWords(base,rotations[i]);
 
     clusters.push({
       rotation:r.rotation,
       canvas:r.canvas,
-      groups:
-        clusterWords(
-          r.words,
-          r.canvas
-        )
+      groups:clusterWords(r.words,r.canvas)
     });
   }
 
-  clusters.sort(
-    (a,b) =>
-      b.groups.length -
-      a.groups.length
-  );
+  clusters.sort((a,b) => b.groups.length - a.groups.length);
 
-  const chosen =
-    clusters[0];
-
+  const chosen = clusters[0];
   const results=[];
 
-  for(
-    let i=0;
-    i<
-      Math.min(
-        chosen.groups.length,
-        20
-      );
-    i++
-  ){
+  for(let i=0;i<Math.min(chosen.groups.length,20);i++){
 
-    const g =
-      chosen.groups[i];
-
-    const raw =
-      combineCandidateText(
-        g.items
-      );
+    const g = chosen.groups[i];
+    const raw = combineCandidateText(g.items);
 
     if(raw.length < 3)
       continue;
 
-    const crop =
-      cropGroup(
-        chosen.canvas,
-        g
-      );
-
-    results.push({
-      raw,
-      crop
-    });
+    const crop = cropGroup(chosen.canvas,g);
+    results.push({raw,crop});
   }
 
   return results;
@@ -2422,122 +1866,60 @@ async function identifySpines(base){
 
 async function searchShelfText(raw){
 
-  const words =
-    raw
-      .split(/\s+/)
-      .filter(
-        w =>
-          w.length > 2
-      );
-
+  const words = raw.split(/\s+/).filter(w => w.length > 2);
   const queries=[];
 
-  if(words.length >= 2){
+  if(words.length >= 2)
+    queries.push(words.slice(0,7).join(' '));
 
-    queries.push(
-      words
-        .slice(0,7)
-        .join(' ')
-    );
-  }
-
-  if(words.length > 7){
-
-    queries.push(
-      words
-        .slice(-7)
-        .join(' ')
-    );
-  }
+  if(words.length > 7)
+    queries.push(words.slice(-7).join(' '));
 
   let items=[];
 
   for(const q of queries){
-
     try{
-
-      items.push(
-        ...await googleBooks(q)
-      );
-
+      items.push(...await googleBooks(q));
     }catch(e){
-
-      console.warn(
-        'Google Books Shelf Scan search failed:',
-        e
-      );
+      console.warn('Google Books Shelf Scan search failed:',e);
     }
   }
 
   const unique=[];
-  const seen=
-    new Set();
+  const seen=new Set();
 
   for(const it of items){
 
-    const id =
-      it.id ||
-      JSON.stringify(
-        it.volumeInfo
-      );
+    const id = it.id || JSON.stringify(it.volumeInfo);
 
     if(!seen.has(id)){
-
       seen.add(id);
-
       unique.push(it);
     }
   }
 
-  unique.sort(
-    (a,b) => {
+  unique.sort((a,b) => {
 
-      const av =
-        a.volumeInfo || {};
+    const av = a.volumeInfo || {};
+    const bv = b.volumeInfo || {};
 
-      const bv =
-        b.volumeInfo || {};
+    const as = scoreText(
+      raw,
+      (av.title || '') + ' ' + (av.authors || []).join(' ')
+    );
 
-      const as =
-        scoreText(
-          raw,
-          (av.title || '') +
-          ' ' +
-          (av.authors || [])
-            .join(' ')
-        );
+    const bs = scoreText(
+      raw,
+      (bv.title || '') + ' ' + (bv.authors || []).join(' ')
+    );
 
-      const bs =
-        scoreText(
-          raw,
-          (bv.title || '') +
-          ' ' +
-          (bv.authors || [])
-            .join(' ')
-        );
+    return bs - as;
+  });
 
-      return bs - as;
-    }
-  );
+  const results = unique.slice(0,4).map(it => gbToBook(it,raw));
 
-  const results =
-    unique
-      .slice(0,4)
-      .map(
-        it =>
-          gbToBook(
-            it,
-            raw
-          )
-      );
-
-  if(
-    results.some(
-      b => b.cover
-    )
-  ){
+  if(results.some(b => b.cover))
     return results;
-  }
 
   try{
 
@@ -2546,96 +1928,54 @@ async function searchShelfText(raw){
       encodeURIComponent(raw) +
       '&limit=5';
 
-    const response =
-      await fetch(
-        searchUrl
-      );
+    const response = await fetch(searchUrl);
 
     if(response.ok){
 
-      const data =
-        await response.json();
+      const data = await response.json();
 
-      const match =
-        data.docs?.find(
-          item =>
-            item.cover_i ||
-            item.isbn?.length
-        );
+      const match = data.docs?.find(
+        item => item.cover_i || item.isbn?.length
+      );
 
       if(match){
 
         let isbn='';
 
-        if(
-          Array.isArray(
-            match.isbn
-          )
-        ){
-
+        if(Array.isArray(match.isbn)){
           isbn =
-            match.isbn.find(
-              x =>
-                String(x)
-                  .length === 13
-            ) ||
+            match.isbn.find(x => String(x).length === 13) ||
             match.isbn[0] ||
             '';
         }
 
-        const title =
-          match.title || '';
+        const title = match.title || '';
 
-        const author =
-          Array.isArray(
-            match.author_name
-          )
-            ? match.author_name.join(', ')
-            : '';
+        const author = Array.isArray(match.author_name)
+          ? match.author_name.join(', ')
+          : '';
 
         let cover='';
 
         if(match.cover_i){
-
-          cover =
-            `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg`;
-
+          cover = `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg`;
         }else if(isbn){
-
-          cover =
-            `https://covers.openlibrary.org/b/isbn/${normalizeISBN(isbn)}-L.jpg`;
+          cover = `https://covers.openlibrary.org/b/isbn/${normalizeISBN(isbn)}-L.jpg`;
         }
 
-        if(
-          title ||
-          author ||
-          cover
-        ){
+        if(title || author || cover){
 
           return [{
-            isbn:
-              normalizeISBN(isbn),
-
+            isbn:normalizeISBN(isbn),
             title,
-
             author,
-
             cover,
-
-            publisher:
-              Array.isArray(
-                match.publisher
-              )
-                ? match.publisher[0] || ''
-                : '',
-
-            year:
-              match.first_publish_year
-                ? String(
-                    match.first_publish_year
-                  )
-                : '',
-
+            publisher:Array.isArray(match.publisher)
+              ? match.publisher[0] || ''
+              : '',
+            year:match.first_publish_year
+              ? String(match.first_publish_year)
+              : '',
             description:'',
             raw
           }];
@@ -2644,11 +1984,7 @@ async function searchShelfText(raw){
     }
 
   }catch(e){
-
-    console.warn(
-      'Open Library Shelf Scan fallback failed:',
-      e
-    );
+    console.warn('Open Library Shelf Scan fallback failed:',e);
   }
 
   return results;
@@ -2661,75 +1997,39 @@ async function searchShelfText(raw){
 
 async function shelfProcess(file){
 
-  $('#shelfWork')
-    .classList.remove(
-      'hidden'
-    );
-
-  $('#shelfResults')
-    .innerHTML='';
-
-  $('#ocrDebug')
-    .classList.add(
-      'hidden'
-    );
+  $('#shelfWork').classList.remove('hidden');
+  $('#shelfResults').innerHTML='';
+  $('#ocrDebug').classList.add('hidden');
 
   shelfCandidates=[];
 
   try{
 
-    setShelfStatus(
-      'Preparing shelf photo…',
-      10
+    setShelfStatus('Preparing shelf photo…',10);
+
+    const im = await imageFromFile(file);
+    const base = canvasFromImage(im,1500);
+    const imageData = base.toDataURL('image/jpeg',0.85);
+
+    $('#shelfPreview').src = imageData;
+
+    setShelfStatus('AI is examining your bookshelf…',30);
+
+    const response = await fetch(
+      'https://bookshelf-ai.shanksvr.workers.dev',
+      {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          image:imageData,
+          mimeType:'image/jpeg'
+        })
+      }
     );
 
-    const im =
-      await imageFromFile(
-        file
-      );
-
-    const base =
-      canvasFromImage(
-        im,
-        1500
-      );
-
-    const imageData =
-      base.toDataURL(
-        'image/jpeg',
-        0.85
-      );
-
-    $('#shelfPreview')
-      .src =
-      imageData;
-
-    setShelfStatus(
-      'AI is examining your bookshelf…',
-      30
-    );
-
-    const response =
-      await fetch(
-        'https://bookshelf-ai.shanksvr.workers.dev',
-        {
-          method:'POST',
-          headers:{
-            'Content-Type':
-              'application/json'
-          },
-          body:JSON.stringify({
-            image:imageData,
-            mimeType:'image/jpeg'
-          })
-        }
-      );
-
-    const result =
-      await response.json();
+    const result = await response.json();
 
     if(!response.ok){
-
       throw new Error(
         result.details ||
         result.error ||
@@ -2737,21 +2037,11 @@ async function shelfProcess(file){
       );
     }
 
-    if(
-      !result.success ||
-      !Array.isArray(
-        result.books
-      )
-    ){
-
-      throw new Error(
-        'Unexpected response from AI service.'
-      );
+    if(!result.success || !Array.isArray(result.books)){
+      throw new Error('Unexpected response from AI service.');
     }
 
-    const shelfBooks =
-      result.books;
-
+    const shelfBooks = result.books;
     let debug=[];
 
     setShelfStatus(
@@ -2759,25 +2049,13 @@ async function shelfProcess(file){
       60
     );
 
-    for(
-      let i=0;
-      i<shelfBooks.length;
-      i++
-    ){
+    for(let i=0;i<shelfBooks.length;i++){
 
-      const book =
-        shelfBooks[i];
+      const book = shelfBooks[i];
+      const title = (book.title || '').trim();
+      const author = (book.author || '').trim();
 
-      const title =
-        (book.title || '')
-          .trim();
-
-      const author =
-        (book.author || '')
-          .trim();
-
-      if(!title)
-        continue;
+      if(!title) continue;
 
       const raw =
         book.evidence ||
@@ -2789,79 +2067,49 @@ async function shelfProcess(file){
 
       setShelfStatus(
         `Looking up ${i + 1} of ${shelfBooks.length}: ${title}…`,
-        60 +
-        ((i + 1) /
-          Math.max(
-            shelfBooks.length,
-            1
-          )) *
-        35
+        60 + ((i + 1) / Math.max(shelfBooks.length,1)) * 35
       );
 
-      const matches =
-        await searchShelfText(
-          `${title} ${author}`
-        );
+      const matches = await searchShelfText(`${title} ${author}`);
 
       if(matches.length){
 
-        const best =
-          matches[0];
+        const best = matches[0];
 
-        const score =
-          scoreText(
-            `${title} ${author}`,
-            `${best.title} ${best.author}`
-          );
+        const score = scoreText(
+          `${title} ${author}`,
+          `${best.title} ${best.author}`
+        );
 
-        const existing =
-          isDuplicate(
-            best.isbn ||
-            book.isbn,
-            best.title,
-            best.author
-          );
+        const existing = isDuplicate(
+          best.isbn || book.isbn,
+          best.title,
+          best.author
+        );
 
         shelfCandidates.push({
-
           ...best,
-
           raw,
-
           score,
-
-          aiConfidence:
-            book.confidence,
-
+          aiConfidence:book.confidence,
           existing,
+          selected:!existing || existing.status === 'Want to Buy'
 
-          selected:
-            !existing ||
-            existing.status === 'Want to Buy'
-        });
+
+
+                  });
 
       }else{
 
         shelfCandidates.push({
-
           title,
-
           author,
-
-          isbn:
-            book.isbn || '',
-
+          isbn:book.isbn || '',
           cover:'',
-
           raw,
-
           score:0,
-
-          aiConfidence:
-            book.confidence,
-
+          aiConfidence:book.confidence,
           selected:false,
-
           needsSearch:true
         });
       }
@@ -2872,58 +2120,30 @@ async function shelfProcess(file){
       100
     );
 
-    $('#ocrDebug').innerHTML =
-      `
-        <div class="debugBox">
+    $('#ocrDebug').innerHTML = `
+      <div class="debugBox">
+        <details>
+          <summary>Show AI recognition results</summary>
+          <div class="debugText">${esc(debug.join('\n'))}</div>
+        </details>
+      </div>
+    `;
 
-          <details>
-
-            <summary>
-              Show AI recognition results
-            </summary>
-
-            <div class="debugText">
-              ${esc(debug.join('\n'))}
-            </div>
-
-          </details>
-
-        </div>
-      `;
-
-    $('#ocrDebug')
-      .classList.remove(
-        'hidden'
-      );
-
+    $('#ocrDebug').classList.remove('hidden');
     renderShelfResults();
 
   }catch(e){
 
     console.error(e);
 
-    setShelfStatus(
-      'Shelf scan could not complete.',
-      0
-    );
+    setShelfStatus('Shelf scan could not complete.',0);
 
-    $('#shelfResults').innerHTML =
-      `
-        <div class="empty">
-
-          <b>
-            Could not scan this photo
-          </b>
-
-          <span>
-            ${esc(
-              e.message ||
-              'Please try again.'
-            )}
-          </span>
-
-        </div>
-      `;
+    $('#shelfResults').innerHTML = `
+      <div class="empty">
+        <b>Could not scan this photo</b>
+        <span>${esc(e.message || 'Please try again.')}</span>
+      </div>
+    `;
   }
 }
 
@@ -2936,204 +2156,124 @@ function renderShelfResults(){
 
   if(!shelfCandidates.length){
 
-    $('#shelfResults').innerHTML =
-      `
-        <div class="empty">
-
-          <b>
-            No book regions detected
-          </b>
-
-          <span>
-            Try moving closer so the spines fill more of the photo.
-          </span>
-
-        </div>
-      `;
+    $('#shelfResults').innerHTML = `
+      <div class="empty">
+        <b>No book regions detected</b>
+        <span>Try moving closer so the spines fill more of the photo.</span>
+      </div>
+    `;
 
     return;
   }
 
-  let html =
-    `
-      <div class="shelfToolbar">
+  let html = `
+    <div class="shelfToolbar">
+      <button onclick="selectAllShelf(true)">Select all</button>
+      <button onclick="selectAllShelf(false)">Clear all</button>
+    </div>
+  `;
 
-        <button
-          onclick="selectAllShelf(true)"
-        >
-          Select all
-        </button>
+  shelfCandidates.forEach((b,i) => {
 
-        <button
-          onclick="selectAllShelf(false)"
-        >
-          Clear all
-        </button>
+    let conf =
+      b.score >= .55
+        ? 'High confidence'
+        : b.score >= .3
+          ? 'Possible match'
+          : 'Low confidence';
 
-      </div>
-    `;
+    let cl =
+      b.score >= .55
+        ? 'confHigh'
+        : b.score >= .3
+          ? 'confMed'
+          : 'confLow';
 
-  shelfCandidates.forEach(
-    (b,i) => {
+    let state =
+      b.existing
+        ? (
+            b.existing.status === 'Owned'
+              ? 'Already in your library'
+              : 'Already on Want to Buy'
+          )
+        : '';
 
-      let conf =
-        b.score >= .55
-          ? 'High confidence'
-          : b.score >= .3
-            ? 'Possible match'
-            : 'Low confidence';
+    html += `
+      <div class="resultCard">
+        <div class="resultTop">
 
-      let cl =
-        b.score >= .55
-          ? 'confHigh'
-          : b.score >= .3
-            ? 'confMed'
-            : 'confLow';
+          ${
+            b.cover
+              ? `<img class="resultCover" src="${esc(b.cover)}">`
+              : `<div class="resultCover noCover">No cover</div>`
+          }
 
-      let state =
-        b.existing
-          ? (
-              b.existing.status === 'Owned'
-                ? 'Already in your library'
-                : 'Already on Want to Buy'
-            )
-          : '';
+          <div class="resultInfo">
 
-      html +=
-        `
-          <div class="resultCard">
-
-            <div class="resultTop">
-
-              ${
-                b.cover
-                  ?
-                  `<img class="resultCover" src="${esc(b.cover)}">`
-                  :
-                  `<div class="resultCover noCover">
-                    No cover
-                  </div>`
-              }
-
-              <div class="resultInfo">
-
-                <div class="resultTitle">
-                  ${esc(
-                    b.title ||
-                    'Possible book match'
-                  )}
-                </div>
-
-                <div class="resultAuthor">
-                  ${esc(
-                    b.author || ''
-                  )}
-                </div>
-
-                <span
-                  class="confidence ${cl}"
-                >
-                  ${conf}
-                </span>
-
-                ${
-                  state
-                    ?
-                    `
-                      <div class="resultAuthor">
-                        <b>
-                          ${esc(state)}
-                        </b>
-                      </div>
-                    `
-                    :
-                    ''
-                }
-
-              </div>
-
+            <div class="resultTitle">
+              ${esc(b.title || 'Possible book match')}
             </div>
 
-            <div class="ocrRead">
-              Read: ${esc(b.raw)}
+            <div class="resultAuthor">
+              ${esc(b.author || '')}
             </div>
 
-            <div class="resultActions">
+            <span class="confidence ${cl}">
+              ${conf}
+            </span>
 
-              ${
-                b.existing &&
-                b.existing.status === 'Owned'
-                  ?
-                  `
-                    <button
-                      class="skipBtn"
-                      disabled
-                    >
-                      Already Owned
-                    </button>
-                  `
-                  :
-                  `
-                    <button
-                      class="addBtn"
-                      onclick="toggleShelf(${i})"
-                    >
-                      ${
-                        b.selected
-                          ? '✓ Selected'
-                          : 'Select'
-                      }
-                    </button>
-                  `
-              }
-
-              ${
-                b.needsSearch
-                  ?
-                  `
-                    <button
-                      class="searchBtn"
-                      onclick="manualShelfSearch(${i})"
-                    >
-                      Search
-                    </button>
-                  `
-                  :
-                  `
-                    <button
-                      class="searchBtn"
-                      onclick="toggleShelf(${i})"
-                    >
-                      ${
-                        b.selected
-                          ? 'Deselect'
-                          : 'Select'
-                      }
-                    </button>
-                  `
-              }
-
-            </div>
+            ${
+              state
+                ? `<div class="resultAuthor"><b>${esc(state)}</b></div>`
+                : ''
+            }
 
           </div>
-        `;
-    }
-  );
+        </div>
 
-  html +=
-    `
-      <button
-        class="primary big"
-        onclick="addSelectedShelf()"
-        style="margin-top:8px"
-      >
-        Add Selected to Owned
-      </button>
+        <div class="ocrRead">
+          Read: ${esc(b.raw)}
+        </div>
+
+        <div class="resultActions">
+
+          ${
+            b.existing && b.existing.status === 'Owned'
+              ? `<button class="skipBtn" disabled>Already Owned</button>`
+              : `
+                <button class="addBtn" onclick="toggleShelf(${i})">
+                  ${b.selected ? '✓ Selected' : 'Select'}
+                </button>
+              `
+          }
+
+          ${
+            b.needsSearch
+              ? `<button class="searchBtn" onclick="manualShelfSearch(${i})">Search</button>`
+              : `
+                <button class="searchBtn" onclick="toggleShelf(${i})">
+                  ${b.selected ? 'Deselect' : 'Select'}
+                </button>
+              `
+          }
+
+        </div>
+      </div>
     `;
+  });
 
-  $('#shelfResults')
-    .innerHTML =
-    html;
+  html += `
+    <button
+      id="shelfAddSelected"
+      class="primary big"
+      onclick="addSelectedShelf()"
+      style="margin-top:8px"
+    >
+      Add Selected to Owned
+    </button>
+  `;
+
+  $('#shelfResults').innerHTML = html;
 }
 
 function toggleShelf(i){
@@ -3145,9 +2285,7 @@ function toggleShelf(i){
     return;
   }
 
-  shelfCandidates[i].selected =
-    !shelfCandidates[i].selected;
-
+  shelfCandidates[i].selected = !shelfCandidates[i].selected;
   renderShelfResults();
 }
 
@@ -3155,13 +2293,7 @@ function selectAllShelf(v){
 
   shelfCandidates.forEach(x => {
 
-    if(
-      !(
-        x.existing &&
-        x.existing.status === 'Owned'
-      )
-    ){
-
+    if(!(x.existing && x.existing.status === 'Owned')){
       x.selected=v;
     }
   });
@@ -3171,61 +2303,41 @@ function selectAllShelf(v){
 
 function manualShelfSearch(i){
 
-  const q =
-    prompt(
-      'Enter the title or author for this book:',
-      shelfCandidates[i].raw || ''
-    );
+  const q = prompt(
+    'Enter the title or author for this book:',
+    shelfCandidates[i].raw || ''
+  );
 
-  if(!q)
-    return;
+  if(!q) return;
 
   googleBooks(q)
     .then(items => {
 
       if(!items.length){
-
-        alert(
-          'No matches found.'
-        );
-
+        alert('No matches found.');
         return;
       }
 
-      const b =
-        gbToBook(
-          items[0],
-          shelfCandidates[i].raw
-        );
+      const b = gbToBook(items[0],shelfCandidates[i].raw);
 
-      b.score =
-        scoreText(
-          shelfCandidates[i].raw,
-          b.title +
-          ' ' +
-          b.author
-        );
+      b.score = scoreText(
+        shelfCandidates[i].raw,
+        b.title + ' ' + b.author
+      );
 
-      b.existing =
-        isDuplicate(
-          b.isbn,
-          b.title,
-          b.author
-        );
+      b.existing = isDuplicate(
+        b.isbn,
+        b.title,
+        b.author
+      );
 
-      b.selected =
-        !b.existing;
-
+      b.selected = !b.existing;
       shelfCandidates[i]=b;
 
       renderShelfResults();
 
     })
-    .catch(() =>
-      alert(
-        'Book search failed.'
-      )
-    );
+    .catch(() => alert('Book search failed.'));
 }
 
 
@@ -3235,197 +2347,211 @@ function manualShelfSearch(i){
 
 async function addSelectedShelf(){
 
+  // Prevent accidental double-clicks while uploads are running.
+  if(shelfAddInProgress)
+    return;
+
   const selected =
-    shelfCandidates.filter(
-      b =>
-        b.selected === true
+    shelfCandidates.filter(b => b.selected === true);
+
+  if(!selected.length){
+    showAppNotification(
+      'Select at least one book to add.',
+      'error',
+      3000
     );
+    return;
+  }
+
+  shelfAddInProgress = true;
+
+  const addButton = $('#shelfAddSelected');
+
+  if(addButton){
+    addButton.disabled = true;
+    addButton.textContent = 'Uploading…';
+  }
 
   let added=0;
   let moved=0;
   let skipped=0;
   let coverUploads=0;
+  let coverFailures=0;
 
-  for(const b of selected){
+  try{
 
-    if(
-      !b.title ||
-      !String(b.title).trim()
-    ){
+    showAppNotification(
+      `Adding ${selected.length} selected book${selected.length === 1 ? '' : 's'}… Please wait.`,
+      'info'
+    );
 
-      skipped++;
+    setShelfStatus(
+      `Adding ${selected.length} selected book${selected.length === 1 ? '' : 's'} to your library…`,
+      5
+    );
 
-      continue;
-    }
+    for(let i=0;i<selected.length;i++){
 
-    const existing =
-      isDuplicate(
+      const b = selected[i];
+
+      if(!b.title || !String(b.title).trim()){
+        skipped++;
+        continue;
+
+            }
+
+      const existing = isDuplicate(
         b.isbn || '',
         b.title || '',
         b.author || ''
       );
 
-    if(existing){
+      if(existing){
 
-      if(
-        existing.status === 'Want to Buy'
-      ){
+        if(existing.status === 'Want to Buy'){
+          existing.status='Owned';
+          existing.added=Date.now();
+          moved++;
 
-        existing.status='Owned';
-        existing.added =
-          Date.now();
+        }else if(existing.status === 'Owned'){
+          skipped++;
 
-        moved++;
-
-      }else if(
-        existing.status === 'Owned'
-      ){
-
-        skipped++;
-
-      }else{
-
-        existing.status='Owned';
-        existing.added =
-          Date.now();
-
-        moved++;
-      }
-
-      continue;
-    }
-
-    const newBook = {
-
-      id:
-        crypto.randomUUID(),
-
-      isbn:
-        normalizeISBN(
-          b.isbn || ''
-        ),
-
-      title:
-        String(
-          b.title || ''
-        ).trim(),
-
-      author:
-        String(
-          b.author ||
-          'Unknown author'
-        ).trim(),
-
-      cover:
-        b.cover || '',
-
-      publisher:
-        b.publisher || '',
-
-      year:
-        b.year || '',
-
-      description:
-        b.description || '',
-
-      status:
-        'Owned',
-
-      added:
-        Date.now(),
-
-      store:'',
-      price:'',
-
-      notes:
-        b.raw
-          ?
-          `Added from Shelf Scan. Scan text: ${b.raw}`
-          :
-          ''
-    };
-
-    if(newBook.cover){
-
-      setShelfStatus(
-        `Saving cover for ${newBook.title}…`,
-        95
-      );
-
-      try{
-
-        const {
-          data,
-          error
-        } =
-          await supabaseClient.functions.invoke(
-            'import-book-cover',
-            {
-              body:{
-                coverUrl:
-                  newBook.cover
-              }
-            }
-          );
-
-        if(error)
-          throw error;
-
-        if(
-          !data?.success ||
-          !data.cover
-        ){
-
-          throw new Error(
-            data?.error ||
-            'Cover upload failed'
-          );
+        }else{
+          existing.status='Owned';
+          existing.added=Date.now();
+          moved++;
         }
 
-        newBook.cover =
-          data.cover;
-
-        coverUploads++;
-
-      }catch(coverError){
-
-        console.error(
-          'Could not upload Shelf Scan cover:',
-          newBook.title,
-          coverError
-        );
+        continue;
       }
+
+      const newBook = {
+        id:crypto.randomUUID(),
+        isbn:normalizeISBN(b.isbn || ''),
+        title:String(b.title || '').trim(),
+        author:String(b.author || 'Unknown author').trim(),
+        cover:b.cover || '',
+        publisher:b.publisher || '',
+        year:b.year || '',
+        description:b.description || '',
+        status:'Owned',
+        added:Date.now(),
+        store:'',
+        price:'',
+        notes:b.raw
+          ? `Added from Shelf Scan. Scan text: ${b.raw}`
+          : ''
+      };
+
+      if(newBook.cover){
+
+        const progress =
+          Math.round(((i + 1) / selected.length) * 90);
+
+        const message =
+          `Uploading cover ${i + 1} of ${selected.length}: ${newBook.title}`;
+
+        setShelfStatus(message,progress);
+
+        showAppNotification(
+          message,
+          'info'
+        );
+
+        try{
+
+          const {data,error} =
+            await supabaseClient.functions.invoke(
+              'import-book-cover',
+              {
+                body:{
+                  coverUrl:newBook.cover
+                }
+              }
+            );
+
+          if(error)
+            throw error;
+
+          if(!data?.success || !data.cover){
+            throw new Error(
+              data?.error || 'Cover upload failed'
+            );
+          }
+
+          newBook.cover=data.cover;
+          coverUploads++;
+
+        }catch(coverError){
+
+          coverFailures++;
+
+          console.error(
+            'Could not upload Shelf Scan cover:',
+            newBook.title,
+            coverError
+          );
+        }
+      }
+
+      books.unshift(newBook);
+      added++;
     }
 
-    books.unshift(
-      newBook
+    // save() stores locally immediately and queues the existing
+    // debounced Supabase library sync.
+    await save();
+    renderAll();
+
+    setShelfStatus(
+      'Books added to your library. Cloud sync is being queued…',
+      100
     );
 
-    added++;
-  }
-
-  save();
-
-  alert(
-    `${added} book${added === 1 ? '' : 's'} added to Owned.` +
-    `${
-      moved
+    const summary =
+      `${added} book${added === 1 ? '' : 's'} added to Owned.` +
+      (moved
         ? ` ${moved} existing book${moved === 1 ? '' : 's'} moved to Owned.`
-        : ''
-    }` +
-    `${
-      skipped
+        : '') +
+      (skipped
         ? ` ${skipped} skipped.`
-        : ''
-    }` +
-    `${
-      coverUploads
+        : '') +
+      (coverUploads
         ? ` ${coverUploads} cover${coverUploads === 1 ? '' : 's'} saved to Supabase.`
-        : ''
-    }`
-  );
+        : '') +
+      (coverFailures
+        ? ` ${coverFailures} cover upload${coverFailures === 1 ? '' : 's'} could not be saved; the books were still added.`
+        : '');
 
-  nav('library');
+    showAppNotification(
+      summary,
+      coverFailures ? 'error' : 'success',
+      6000
+    );
+
+    nav('library');
+
+  }catch(error){
+
+    console.error('Shelf Scan add failed:',error);
+
+    showAppNotification(
+      'There was a problem adding the selected books. Check the console for details.',
+      'error',
+      6000
+    );
+
+  }finally{
+
+    shelfAddInProgress = false;
+
+    const button = $('#shelfAddSelected');
+
+    if(button){
+      button.disabled = false;
+      button.textContent = 'Add Selected to Owned';
+    }
+  }
 }
 
 
@@ -3433,26 +2559,13 @@ async function addSelectedShelf(){
    SUPABASE ACCOUNT LOGIN
 ========================================================= */
 
-function showAuthStatus(
-  message,
-  isError=false
-){
+function showAuthStatus(message,isError=false){
 
-  const status =
-    document.querySelector(
-      '#authStatus'
-    );
+  const status = document.querySelector('#authStatus');
+  if(!status) return;
 
-  if(!status)
-    return;
-
-  status.textContent =
-    message;
-
-  status.style.color =
-    isError
-      ? '#a33'
-      : '#68727a';
+  status.textContent = message;
+  status.style.color = isError ? '#a33' : '#68727a';
 }
 
 async function showAppAfterLogin(){
@@ -3462,37 +2575,25 @@ async function showAppAfterLogin(){
     const {
       data:sessionData,
       error:sessionError
-    } =
-      await supabaseClient.auth.getSession();
+    } = await supabaseClient.auth.getSession();
 
     if(sessionError)
       throw sessionError;
 
-    const user =
-      sessionData.session?.user;
+    const user = sessionData.session?.user;
+    if(!user) return;
 
-    if(!user)
-      return;
+    KEY = `bookshelf_books_${user.id}`;
 
-    KEY =
-      `bookshelf_books_${user.id}`;
+    $('#accountEmail').textContent =
+      user.email || 'Email unavailable';
 
-    $('#accountEmail')
-      .textContent =
-      user.email ||
-      'Email unavailable';
-
-    $('#settingsEmail')
-      .textContent =
-      user.email ||
-      'Email unavailable';
+    $('#settingsEmail').textContent =
+      user.email || 'Email unavailable';
 
     books=[];
 
-    const {
-      data:cloudBooks,
-      error
-    } =
+    const {data:cloudBooks,error} =
       await supabaseClient
         .from('books')
         .select('*')
@@ -3501,85 +2602,33 @@ async function showAppAfterLogin(){
     if(error)
       throw error;
 
-    books =
-      cloudBooks.map(
-        book => ({
-          id:
-            book.local_id ||
-            book.id,
+    books = cloudBooks.map(book => ({
+      id:book.local_id || book.id,
+      cloudId:book.id,
+      isbn:book.isbn,
+      title:book.title,
+      author:book.author,
+      cover:book.cover,
+      publisher:book.publisher,
+      year:book.year,
+      description:book.description,
+      status:book.status,
+      added:book.added,
+      store:book.store,
+      price:book.price,
+      notes:book.notes
+    }));
 
-          cloudId:
-            book.id,
+    localStorage.setItem(KEY,JSON.stringify(books));
 
-          isbn:
-            book.isbn,
+    startRealtimeSync(user);
 
-          title:
-            book.title,
+    document.body.classList.remove('auth-locked');
 
-          author:
-            book.author,
+    document.querySelectorAll('.screen')
+      .forEach(x => x.classList.remove('active'));
 
-          cover:
-            book.cover,
-
-          publisher:
-            book.publisher,
-
-          year:
-            book.year,
-
-          description:
-            book.description,
-
-          status:
-            book.status,
-
-          added:
-            book.added,
-
-          store:
-            book.store,
-
-          price:
-            book.price,
-
-          notes:
-            book.notes
-        })
-      );
-
-    localStorage.setItem(
-      KEY,
-      JSON.stringify(
-        books
-      )
-    );
-
-    startRealtimeSync(
-      user
-    );
-
-    document.body
-      .classList.remove(
-        'auth-locked'
-      );
-
-    document
-      .querySelectorAll(
-        '.screen'
-      )
-      .forEach(
-        x =>
-          x.classList.remove(
-            'active'
-          )
-      );
-
-    $('#home')
-      .classList.add(
-        'active'
-      );
+    $('#home').classList.add('active');
 
     $$('nav button')
       .forEach(x =>
@@ -3593,10 +2642,7 @@ async function showAppAfterLogin(){
 
   }catch(error){
 
-    console.error(
-      'Cloud library download failed:',
-      error
-    );
+    console.error('Cloud library download failed:',error);
 
     alert(
       'Could not load your cloud library. Please try again.'
@@ -3606,148 +2652,94 @@ async function showAppAfterLogin(){
 
 function showLoginScreen(){
 
-  document.body
-    .classList.add(
-      'auth-locked'
-    );
+  document.body.classList.add('auth-locked');
 
-  document
-    .querySelectorAll(
-      '.screen'
-    )
-    .forEach(
-      x =>
-        x.classList.remove(
-          'active'
-        )
-    );
+  document.querySelectorAll('.screen')
+    .forEach(x => x.classList.remove('active'));
 
-  $('#auth')
-    .classList.add(
-      'active'
-    );
+  $('#auth').classList.add('active');
 }
 
 async function signIn(){
 
-  const email =
-    $('#authEmail')
-      .value.trim();
-
-  const password =
-    $('#authPassword')
-      .value;
+  const email = $('#authEmail').value.trim();
+  const password = $('#authPassword').value;
 
   if(!email || !password){
-
-    showAuthStatus(
-      'Enter your email and password.',
-      true
-    );
-
+    showAuthStatus('Enter your email and password.',true);
     return;
   }
 
-  $('#signInBtn')
-    .disabled=true;
-
-  showAuthStatus(
-    'Signing in…'
-  );
+  $('#signInBtn').disabled=true;
+  showAuthStatus('Signing in…');
 
   try{
 
-    const {
-      error
-    } =
-      await supabaseClient.auth
-        .signInWithPassword({
-          email,
-          password
-        });
+    const {error} =
+      await supabaseClient.auth.signInWithPassword({
+        email,
+        password
+      });
 
     if(error)
       throw error;
 
     showAppAfterLogin();
-
     showAuthStatus('');
 
   }catch(error){
 
     showAuthStatus(
-      error.message ||
-      'Could not sign in.',
+      error.message || 'Could not sign in.',
       true
     );
 
   }finally{
 
-    $('#signInBtn')
-      .disabled=false;
+    $('#signInBtn').disabled=false;
   }
+
 }
 
 async function createAccount(){
 
-  const email =
-    $('#authEmail')
-      .value.trim();
-
-  const password =
-    $('#authPassword')
-      .value;
+  const email = $('#authEmail').value.trim();
+  const password = $('#authPassword').value;
 
   if(!email || !password){
-
     showAuthStatus(
       'Enter your email and password to create your account.',
       true
     );
-
     return;
   }
 
   if(password.length < 6){
-
     showAuthStatus(
       'Use a password with at least 6 characters.',
       true
     );
-
     return;
   }
 
-  $('#createAccountBtn')
-    .disabled=true;
-
-  showAuthStatus(
-    'Creating your account…'
-  );
+  $('#createAccountBtn').disabled=true;
+  showAuthStatus('Creating your account…');
 
   try{
 
-    const {
-      data,
-      error
-    } =
-      await supabaseClient.auth
-        .signUp({
-          email,
-          password
-        });
+    const {data,error} =
+      await supabaseClient.auth.signUp({
+        email,
+        password
+      });
 
     if(error)
       throw error;
 
     if(data.session){
-
       showAppAfterLogin();
-
       showAuthStatus('');
-
     }else{
-
       showAuthStatus(
         'Account created. Check your email for the confirmation link, then return here and sign in.'
       );
@@ -3756,104 +2748,60 @@ async function createAccount(){
   }catch(error){
 
     showAuthStatus(
-      error.message ||
-      'Could not create your account.',
+      error.message || 'Could not create your account.',
       true
     );
 
   }finally{
 
-    $('#createAccountBtn')
-      .disabled=false;
+    $('#createAccountBtn').disabled=false;
   }
 }
 
-$('#signInBtn')
-  .onclick =
-  signIn;
+$('#signInBtn').onclick = signIn;
+$('#createAccountBtn').onclick = createAccount;
 
-$('#createAccountBtn')
-  .onclick =
-  createAccount;
+$('#signOutBtn').onclick = async () => {
 
-$('#signOutBtn')
-  .onclick =
-  async () => {
+  if(!confirm('Are you sure you want to sign out?'))
+    return;
 
-    if(!confirm(
-      'Are you sure you want to sign out?'
-    )){
-      return;
-    }
+  const {error} = await supabaseClient.auth.signOut();
 
-    const {
-      error
-    } =
-      await supabaseClient.auth
-        .signOut();
+  if(error){
+    alert('Could not sign out: ' + error.message);
+  }
+};
 
-    if(error){
+$('#authPassword').addEventListener('keydown',e => {
+  if(e.key === 'Enter')
+    signIn();
+});
 
-      alert(
-        'Could not sign out: ' +
-        error.message
-      );
-    }
-  };
-
-$('#authPassword')
-  .addEventListener(
-    'keydown',
-    e => {
-
-      if(e.key === 'Enter')
-        signIn();
-    }
-  );
-
-document.body
-  .classList.add(
-    'auth-locked'
-  );
-
+document.body.classList.add('auth-locked');
 showLoginScreen();
 
-supabaseClient.auth
-  .onAuthStateChange(
-    (event,session) => {
+supabaseClient.auth.onAuthStateChange((event,session) => {
 
-      if(session)
-        showAppAfterLogin();
+  if(session)
+    showAppAfterLogin();
 
-      else if(
-        event === 'SIGNED_OUT'
-      )
-        showLoginScreen();
-    }
-  );
+  else if(event === 'SIGNED_OUT')
+    showLoginScreen();
+});
 
-supabaseClient.auth
-  .getSession()
-  .then(
-    ({data,error}) => {
+supabaseClient.auth.getSession().then(({data,error}) => {
 
-      if(error){
+  if(error){
+    showAuthStatus(error.message,true);
+    return;
+  }
 
-        showAuthStatus(
-          error.message,
-          true
-        );
-
-        return;
-      }
-
-      if(data.session)
-        showAppAfterLogin();
-
-      else
-        showLoginScreen();
-    }
-  );
+  if(data.session)
+    showAppAfterLogin();
+  else
+    showLoginScreen();
+});
 
 
 /* =========================================================
@@ -3862,12 +2810,8 @@ supabaseClient.auth
 
 async function getCurrentUser(){
 
-  const {
-    data,
-    error
-  } =
-    await supabaseClient.auth
-      .getSession();
+  const {data,error} =
+    await supabaseClient.auth.getSession();
 
   if(error)
     throw error;
@@ -3877,529 +2821,271 @@ async function getCurrentUser(){
 
 async function loadSharing(){
 
-  const user =
-    await getCurrentUser();
+  const user = await getCurrentUser();
+  if(!user) return;
 
-  if(!user)
-    return;
+  const incoming = $('#incomingInvitations');
+  const shared = $('#sharedWithMe');
+  const outgoing = $('#myShares');
 
-  const incoming =
-    $('#incomingInvitations');
-
-  const shared =
-    $('#sharedWithMe');
-
-  const outgoing =
-    $('#myShares');
-
-  incoming.innerHTML =
-    '<p>Loading...</p>';
-
-  shared.innerHTML =
-    '<p>Loading...</p>';
-
-  outgoing.innerHTML =
-    '<p>Loading...</p>';
+  incoming.innerHTML = '<p>Loading...</p>';
+  shared.innerHTML = '<p>Loading...</p>';
+  outgoing.innerHTML = '<p>Loading...</p>';
 
   try{
 
-    const {
-      data:invitations,
-      error:inviteError
-    } =
+    const {data:invitations,error:inviteError} =
       await supabaseClient
         .from('library_shares')
         .select('*')
-        .eq(
-          'shared_with_id',
-          user.id
-        )
-        .eq(
-          'status',
-          'pending'
-        );
+        .eq('shared_with_id',user.id)
+        .eq('status','pending');
 
     if(inviteError)
       throw inviteError;
 
-    incoming.innerHTML =
-      invitations.length
-        ?
-        invitations
-          .map(
-            s =>
-              `
-                <div class="settingsCard">
+    incoming.innerHTML = invitations.length
+      ? invitations.map(s => `
+          <div class="settingsCard">
+            <div>
+              <b>${esc(s.owner_email || 'BookShelf user')}</b>
+              <p>Invited you to view their library.</p>
+              <button class="primary" onclick="acceptLibraryInvite('${s.id}')">
+                Accept Invitation
+              </button>
+            </div>
+          </div>
+        `).join('')
+      : '<p>No pending invitations.</p>';
 
-                  <div>
-
-                    <b>
-                      ${esc(
-                        s.owner_email ||
-                        'BookShelf user'
-                      )}
-                    </b>
-
-                    <p>
-                      Invited you to view their library.
-                    </p>
-
-                    <button
-                      class="primary"
-                      onclick="acceptLibraryInvite('${s.id}')"
-                    >
-                      Accept Invitation
-                    </button>
-
-                  </div>
-
-                </div>
-              `
-          )
-          .join('')
-        :
-        '<p>No pending invitations.</p>';
-
-    const {
-      data:accepted,
-      error:acceptedError
-    } =
+    const {data:accepted,error:acceptedError} =
       await supabaseClient
         .from('library_shares')
         .select('*')
-        .eq(
-          'shared_with_id',
-          user.id
-        )
-        .eq(
-          'status',
-          'accepted'
-        );
+        .eq('shared_with_id',user.id)
+        .eq('status','accepted');
 
     if(acceptedError)
       throw acceptedError;
 
-    shared.innerHTML =
-      accepted.length
-        ?
-        accepted
-          .map(
-            s =>
-              `
-                <div class="settingsCard">
+    shared.innerHTML = accepted.length
+      ? accepted.map(s => `
+          <div class="settingsCard">
+            <div>
+              <b>${esc(s.owner_email || 'BookShelf user')}</b>
+              <p>Shared library</p>
+              <button class="primary" onclick="viewSharedLibrary('${s.owner_id}')">
+                View Library
+              </button>
+            </div>
+          </div>
+        `).join('')
+      : '<p>No libraries are currently shared with you.</p>';
 
-                  <div>
-
-                    <b>
-                      ${esc(
-                        s.owner_email ||
-                        'BookShelf user'
-                      )}
-                    </b>
-
-                    <p>
-                      Shared library
-                    </p>
-
-                    <button
-                      class="primary"
-                      onclick="viewSharedLibrary('${s.owner_id}')"
-                    >
-                      View Library
-                    </button>
-
-                  </div>
-
-                </div>
-              `
-          )
-          .join('')
-        :
-        '<p>No libraries are currently shared with you.</p>';
-
-    const {
-      data:outgoingShares,
-      error:outgoingError
-    } =
+    const {data:outgoingShares,error:outgoingError} =
       await supabaseClient
         .from('library_shares')
         .select('*')
-        .eq(
-          'owner_id',
-          user.id
-        );
+        .eq('owner_id',user.id);
 
     if(outgoingError)
       throw outgoingError;
 
-    outgoing.innerHTML =
-      outgoingShares.length
-        ?
-        outgoingShares
-          .map(
-            s =>
-              `
-                <div class="settingsCard">
-
-                  <div>
-
-                    <b>
-                      ${esc(
-                        s.shared_with_email ||
-                        'BookShelf user'
-                      )}
-                    </b>
-
-                    <p>
-                      Status:
-                      ${esc(s.status)}
-                    </p>
-
-                    <button
-                      class="settingsSignOut"
-                      onclick="revokeLibraryShare('${s.id}')"
-                    >
-                      Revoke Access
-                    </button>
-
-                  </div>
-
-                </div>
-              `
-          )
-          .join('')
-        :
-        '<p>You have not shared your library with anyone yet.</p>';
+    outgoing.innerHTML = outgoingShares.length
+      ? outgoingShares.map(s => `
+          <div class="settingsCard">
+            <div>
+              <b>${esc(s.shared_with_email || 'BookShelf user')}</b>
+              <p>Status: ${esc(s.status)}</p>
+              <button class="settingsSignOut" onclick="revokeLibraryShare('${s.id}')">
+                Revoke Access
+              </button>
+            </div>
+          </div>
+        `).join('')
+      : '<p>You have not shared your library with anyone yet.</p>';
 
   }catch(error){
 
-    console.error(
-      'Sharing load failed:',
-      error
-    );
+    console.error('Sharing load failed:',error);
 
-    incoming.innerHTML =
-      '<p>Could not load sharing information.</p>';
-
+    incoming.innerHTML = '<p>Could not load sharing information.</p>';
     shared.innerHTML='';
-
     outgoing.innerHTML='';
   }
 }
 
 async function sendLibraryInvite(){
 
-  const email =
-    $('#inviteEmail')
-      .value.trim();
-
-  const status =
-    $('#inviteStatus');
+  const email = $('#inviteEmail').value.trim();
+  const status = $('#inviteStatus');
 
   if(!email){
-
-    status.textContent =
-      'Enter an email address first.';
-
+    status.textContent = 'Enter an email address first.';
     return;
   }
 
-  status.textContent =
-    'Sending invitation...';
+  status.textContent = 'Sending invitation...';
 
   try{
 
-    const {
-      error
-    } =
+    const {error} =
       await supabaseClient.rpc(
         'invite_library_user',
-        {
-          invitee_email:
-            email
-        }
+        {invitee_email:email}
       );
 
     if(error)
       throw error;
 
-    status.textContent =
-      'Invitation sent successfully!';
-
-    $('#inviteEmail')
-      .value='';
+    status.textContent = 'Invitation sent successfully!';
+    $('#inviteEmail').value='';
 
     await loadSharing();
 
   }catch(error){
 
-    console.error(
-      'Invitation failed:',
-      error
-    );
+    console.error('Invitation failed:',error);
 
     status.textContent =
-      error.message ||
-      'Could not send invitation.';
+      error.message || 'Could not send invitation.';
   }
 }
 
-async function acceptLibraryInvite(
-  shareId
-){
+async function acceptLibraryInvite(shareId){
 
   try{
 
-    const {
-      error
-    } =
+    const {error} =
       await supabaseClient.rpc(
         'accept_library_invitation',
-        {
-          share_id:
-            shareId
-        }
+        {share_id:shareId}
       );
 
     if(error)
       throw error;
 
-    alert(
-      'Invitation accepted!'
-    );
-
+    alert('Invitation accepted!');
     await loadSharing();
 
   }catch(error){
 
-    console.error(
-      'Accept invitation failed:',
-      error
-    );
+    console.error('Accept invitation failed:',error);
 
     alert(
-      error.message ||
-      'Could not accept invitation.'
+      error.message || 'Could not accept invitation.'
     );
   }
 }
 
-async function revokeLibraryShare(
-  shareId
-){
+async function revokeLibraryShare(shareId){
 
-  if(!confirm(
-    "Revoke this person's access to your library?"
-  )){
+  if(!confirm("Revoke this person's access to your library?"))
     return;
-  }
 
   try{
 
-    const {
-      error
-    } =
+    const {error} =
       await supabaseClient
         .from('library_shares')
         .delete()
-        .eq(
-          'id',
-          shareId
-        );
+        .eq('id',shareId);
 
     if(error)
       throw error;
 
-    alert(
-      'Library access revoked.'
-    );
-
+    alert('Library access revoked.');
     await loadSharing();
 
   }catch(error){
 
-    console.error(
-      'Revoke sharing failed:',
-      error
-    );
+      console.error('Revoke sharing failed:',error);
 
     alert(
-      error.message ||
-      'Could not revoke access.'
+      error.message || 'Could not revoke access.'
     );
   }
 }
 
-async function viewSharedLibrary(
-  ownerId
-){
+async function viewSharedLibrary(ownerId){
 
-  const container =
-    $('#sharedWithMe');
-
-  container.innerHTML =
-    '<p>Loading shared books...</p>';
+  const container = $('#sharedWithMe');
+  container.innerHTML = '<p>Loading shared books...</p>';
 
   try{
 
-    const {
-      data:sharedBooks,
-      error
-    } =
+    const {data:sharedBooks,error} =
       await supabaseClient
         .from('books')
         .select('*')
-        .eq(
-          'user_id',
-          ownerId
-        );
+        .eq('user_id',ownerId);
 
     if(error)
       throw error;
 
-    const books =
-      sharedBooks || [];
+    const sharedBookRows = sharedBooks || [];
 
-    container.innerHTML =
-      `
+    container.innerHTML = `
+      <button class="secondary" onclick="loadSharing()">
+        ‹ Back to Shared Libraries
+      </button>
 
-        <button
-          class="secondary"
-          onclick="loadSharing()"
-        >
-          ‹ Back to Shared Libraries
-        </button>
+      <input
+        id="sharedLibrarySearch"
+        type="search"
+        placeholder="Search title, author, or ISBN..."
+        style="width:100%;padding:12px;margin:15px 0;border-radius:8px;box-sizing:border-box;"
+      >
 
-        <input
-          id="sharedLibrarySearch"
-          type="search"
-          placeholder="Search title, author, or ISBN..."
-          style="width:100%;padding:12px;margin:15px 0;border-radius:8px;box-sizing:border-box;"
-        >
+      <div id="sharedBookResults" class="bookgrid"></div>
+    `;
 
-        <div
-          id="sharedBookResults"
-          class="bookgrid"
-        ></div>
+    const searchInput = $('#sharedLibrarySearch');
+    const resultsContainer = $('#sharedBookResults');
 
-      `;
+    function renderSharedBooks(searchTerm=''){
 
-    const searchInput =
-      $('#sharedLibrarySearch');
+      const term = searchTerm.toLowerCase().trim();
 
-    const resultsContainer =
-      $('#sharedBookResults');
-
-    function renderSharedBooks(
-      searchTerm=''
-    ){
-
-      const term =
-        searchTerm
-          .toLowerCase()
-          .trim();
-
-      const filteredBooks =
-        books.filter(
-          book =>
-            String(
-              book.title || ''
-            )
-              .toLowerCase()
-              .includes(term) ||
-
-            String(
-              book.author || ''
-            )
-              .toLowerCase()
-              .includes(term) ||
-
-            String(
-              book.isbn || ''
-            )
-              .toLowerCase()
-              .includes(term)
-        );
+      const filteredBooks = sharedBookRows.filter(book =>
+        String(book.title || '').toLowerCase().includes(term) ||
+        String(book.author || '').toLowerCase().includes(term) ||
+        String(book.isbn || '').toLowerCase().includes(term)
+      );
 
       if(!filteredBooks.length){
-
         resultsContainer.innerHTML =
           term
             ? '<p>No matching books found.</p>'
             : '<p>This library is currently empty.</p>';
-
         return;
       }
 
-      resultsContainer.innerHTML =
-        filteredBooks
-          .map(
-            book =>
-              `
-                <article class="book">
-
-                  ${
-                    book.cover
-                      ?
-                      `
-                        <img
-                          class="cover"
-                          src="${esc(book.cover)}"
-                          alt="${esc(book.title)} cover"
-                        >
-                      `
-                      :
-                      `
-                        <div class="cover noCover">
-                          No cover image
-                        </div>
-                      `
-                  }
-
-                  <div class="bookInfo">
-
-                    <div class="bookTitle">
-                      ${esc(book.title)}
-                    </div>
-
-                    <div class="author">
-                      ${esc(
-                        book.author ||
-                        'Unknown author'
-                      )}
-                    </div>
-
-                    <span class="badge">
-                      ${esc(
-                        book.status ||
-                        'Owned'
-                      )}
-                    </span>
-
-                  </div>
-
-                </article>
-              `
-          )
-          .join('');
+      resultsContainer.innerHTML = filteredBooks.map(book => `
+        <article class="book">
+          ${
+            book.cover
+              ? `<img class="cover" src="${esc(book.cover)}" alt="${esc(book.title)} cover">`
+              : `<div class="cover noCover">No cover image</div>`
+          }
+          <div class="bookInfo">
+            <div class="bookTitle">${esc(book.title)}</div>
+            <div class="author">${esc(book.author || 'Unknown author')}</div>
+            <span class="badge">${esc(book.status || 'Owned')}</span>
+          </div>
+        </article>
+      `).join('');
     }
 
-    searchInput.addEventListener(
-      'input',
-      () =>
-        renderSharedBooks(
-          searchInput.value
-        )
+    searchInput.addEventListener('input',() =>
+      renderSharedBooks(searchInput.value)
     );
 
     renderSharedBooks();
 
   }catch(error){
 
-    console.error(
-      'Shared library load failed:',
-      error
-    );
+    console.error('Shared library load failed:',error);
 
     container.innerHTML =
       '<p>Could not load this shared library. Access may have been revoked.</p>';
@@ -4412,162 +3098,79 @@ async function viewSharedLibrary(
 ========================================================= */
 
 // SETTINGS NAVIGATION
-
-$('#settingsBtn').onclick =
-  () => nav('settings');
-
-$('#settingsBackBtn').onclick =
-  () => nav('home');
-
+$('#settingsBtn').onclick = () => nav('settings');
+$('#settingsBackBtn').onclick = () => nav('home');
 
 // LIBRARY SHARING
+$('#manageSharingBtn').onclick = () => {
+  nav('sharing');
+  loadSharing();
+};
 
-$('#manageSharingBtn').onclick =
-  () => {
-
-    nav('sharing');
-
-    loadSharing();
-  };
-
-$('#sharingBackBtn').onclick =
-  () => nav('settings');
-
-$('#sendInviteBtn').onclick =
-  sendLibraryInvite;
-
+$('#sharingBackBtn').onclick = () => nav('settings');
+$('#sendInviteBtn').onclick = sendLibraryInvite;
 
 // MAIN NAV
+$$('nav button').forEach(b =>
+  b.onclick = () =>
+    b.dataset.nav === 'scan'
+      ? startCamera()
+      : nav(b.dataset.nav)
+);
 
-$$('nav button')
-  .forEach(
-    b =>
-      b.onclick =
-        () =>
-          b.dataset.nav === 'scan'
-            ? startCamera()
-            : nav(b.dataset.nav)
-  );
+$('#scanHome').onclick = startCamera;
+$('#scanLib').onclick = startCamera;
 
-$('#scanHome')
-  .onclick =
-  startCamera;
+$('#shelfHome').onclick = () => nav('shelf');
+$('#shelfLib').onclick = () => nav('shelf');
 
-$('#scanLib')
-  .onclick =
-  startCamera;
+$('#closeScan').onclick = () => nav('home');
+$('#closeShelf').onclick = () => nav('home');
 
-$('#shelfHome')
-  .onclick =
-  () => nav('shelf');
+$('#backDetails').onclick = () => nav('library');
+$('#seeAll').onclick = () => nav('library');
 
-$('#shelfLib')
-  .onclick =
-  () => nav('shelf');
+$('#search').oninput = renderLibrary;
 
-$('#closeScan')
-  .onclick =
-  () => nav('home');
-
-$('#closeShelf')
-  .onclick =
-  () => nav('home');
-
-$('#backDetails')
-  .onclick =
-  () => nav('library');
-
-$('#seeAll')
-  .onclick =
-  () => nav('library');
-
-$('#search')
-  .oninput =
-  renderLibrary;
-
-$('#lookupManual')
-  .onclick =
-  () =>
-    lookup(
-      $('#manualIsbn').value
-    );
+$('#lookupManual').onclick = () =>
+  lookup($('#manualIsbn').value);
 
 
 // SHELF
+$('#chooseShelf').onclick = () => $('#shelfCamera').click();
+$('#uploadShelf').onclick = () => $('#shelfFile').click();
 
-$('#chooseShelf')
-  .onclick =
-  () =>
-    $('#shelfCamera')
-      .click();
+$('#shelfCamera').onchange = e => {
+  if(e.target.files[0])
+    shelfProcess(e.target.files[0]);
+  e.target.value='';
+};
 
-$('#uploadShelf')
-  .onclick =
-  () =>
-    $('#shelfFile')
-      .click();
+$('#shelfFile').onchange = e => {
+  if(e.target.files[0])
+    shelfProcess(e.target.files[0]);
+  e.target.value='';
+};
 
-$('#shelfCamera')
-  .onchange =
-  e => {
+$$('.chip').forEach(b =>
+  b.onclick = () => {
 
-    if(e.target.files[0])
-      shelfProcess(
-        e.target.files[0]
-      );
+    $$('.chip').forEach(c =>
+      c.classList.remove('active')
+    );
 
-    e.target.value='';
-  };
+    b.classList.add('active');
+    currentFilter = b.dataset.filter;
+    renderLibrary();
+  }
+);
 
-$('#shelfFile')
-  .onchange =
-  e => {
-
-    if(e.target.files[0])
-      shelfProcess(
-        e.target.files[0]
-      );
-
-    e.target.value='';
-  };
-
-$$('.chip')
-  .forEach(
-    b =>
-      b.onclick =
-        () => {
-
-          $$('.chip')
-            .forEach(
-              c =>
-                c.classList.remove(
-                  'active'
-                )
-            );
-
-          b.classList.add(
-            'active'
-          );
-
-          currentFilter =
-            b.dataset.filter;
-
-          renderLibrary();
-        }
-  );
-
-$$('.stats button')
-  .forEach(
-    b =>
-      b.onclick =
-        () => {
-
-          currentFilter =
-            b.dataset.filter;
-
-          nav('library');
-        }
-  );
+$$('.stats button').forEach(b =>
+  b.onclick = () => {
+    currentFilter = b.dataset.filter;
+    nav('library');
+  }
+);
 
 renderAll();
 
@@ -4578,121 +3181,66 @@ renderAll();
 
 async function recoverMissingCovers(){
 
-  console.log(
-    'Starting Supabase cover migration...'
-  );
+  console.log('Starting Supabase cover migration...');
 
-  const {
-    data:sessionData
-  } =
-    await supabaseClient.auth
-      .getSession();
+  const {data:sessionData} =
+    await supabaseClient.auth.getSession();
 
-  const user =
-    sessionData.session?.user;
+  const user = sessionData.session?.user;
 
   if(!user){
-
-    console.error(
-      'You must be logged in.'
-    );
-
+    console.error('You must be logged in.');
     return;
   }
 
-  const {
-    data:allBooks,
-    error
-  } =
+  const {data:allBooks,error} =
     await supabaseClient
       .from('books')
-      .select(
-        'id,title,author,cover'
-      )
-      .eq(
-        'user_id',
-        user.id
-      );
+      .select('id,title,author,cover')
+      .eq('user_id',user.id);
 
   if(error){
-
-    console.error(
-      'Could not load books:',
-      error
-    );
-
+    console.error('Could not load books:',error);
     return;
   }
 
-  const booksToProcess =
-    allBooks.filter(
-      book =>
-        !book.cover ||
-        book.cover.includes(
-          'openlibrary.org'
-        )
-    );
-
-  console.log(
-    'Books to migrate:',
-    booksToProcess.length
+  const booksToProcess = allBooks.filter(book =>
+    !book.cover ||
+    book.cover.includes('openlibrary.org')
   );
+
+  console.log('Books to migrate:',booksToProcess.length);
 
   let updated=0;
 
-  for(
-    const book of booksToProcess
-  ){
+  for(const book of booksToProcess){
 
     try{
 
-      let coverUrl =
-        book.cover;
+      let coverUrl = book.cover;
 
       if(!coverUrl){
 
         const searchUrl =
           'https://openlibrary.org/search.json?title=' +
-          encodeURIComponent(
-            book.title
-          ) +
+          encodeURIComponent(book.title) +
           '&author=' +
-          encodeURIComponent(
-            book.author || ''
-          ) +
+          encodeURIComponent(book.author || '') +
           '&limit=5';
 
-        const response =
-          await fetch(
-            searchUrl
-          );
+        const response = await fetch(searchUrl);
 
         if(!response.ok){
-
-          console.log(
-            'Search failed:',
-            book.title
-          );
-
+          console.log('Search failed:',book.title);
           continue;
         }
 
-        const results =
-          await response.json();
+        const results = await response.json();
 
-        const match =
-          results.docs?.find(
-            item =>
-              item.cover_i
-          );
+        const match = results.docs?.find(item => item.cover_i);
 
         if(!match){
-
-          console.log(
-            'No cover found:',
-            book.title
-          );
-
+          console.log('No cover found:',book.title);
           continue;
         }
 
@@ -4700,83 +3248,46 @@ async function recoverMissingCovers(){
           `https://covers.openlibrary.org/b/id/${match.cover_i}-L.jpg`;
       }
 
-      const {
-        data,
-        error:uploadError
-      } =
+      const {data,error:uploadError} =
         await supabaseClient.functions.invoke(
           'import-book-cover',
-          {
-            body:{
-              coverUrl
-            }
-          }
+          {body:{coverUrl}}
         );
 
-      if(
-        uploadError ||
-        !data?.success
-      ){
+      if(uploadError || !data?.success){
 
         console.error(
           'Image upload failed:',
           book.title,
-          uploadError ||
-          data?.error
+          uploadError || data?.error
         );
 
         continue;
       }
 
-      const {
-        error:updateError
-      } =
+      const {error:updateError} =
         await supabaseClient
           .from('books')
-          .update({
-            cover:
-              data.cover
-          })
-          .eq(
-            'id',
-            book.id
-          )
-          .eq(
-            'user_id',
-            user.id
-          );
+          .update({cover:data.cover})
+          .eq('id',book.id)
+          .eq('user_id',user.id);
 
       if(updateError){
-
-        console.error(
-          'Database update failed:',
-          updateError
-        );
-
+        console.error('Database update failed:',updateError);
         continue;
       }
 
       updated++;
 
-      console.log(
-        'Supabase cover saved:',
-        book.title
-      );
+      console.log('Supabase cover saved:',book.title);
 
     }catch(err){
 
-      console.error(
-        'Migration failed:',
-        book.title,
-        err
-      );
+      console.error('Migration failed:',book.title,err);
     }
   }
 
-  console.log(
-    `Migration finished. Updated ${updated} books.`
-  );
+  console.log(`Migration finished. Updated ${updated} books.`);
 }
 
-window.recoverMissingCovers =
-  recoverMissingCovers;
+window.recoverMissingCovers = recoverMissingCovers;
