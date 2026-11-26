@@ -466,3 +466,52 @@ nav button.active span {
   font-size: 15px;
   text-align: left;
 }
+.coverControls {
+  margin-top: 14px;
+  background: white;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.coverControlsTitle {
+  font-size: 13px;
+  font-weight: 800;
+  color: #26352f;
+  margin-bottom: 10px;
+}
+
+.coverControlButtons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.coverControlButtons button {
+  padding: 11px 8px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.coverCameraBtn {
+  background: #2d5b50;
+  color: white;
+}
+
+.coverFileBtn,
+.coverAutomaticBtn {
+  background: #e8e5df;
+}
+
+.coverAutomaticBtn {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.coverUploadStatus {
+  margin-top: 9px;
+  font-size: 12px;
+  color: #69737d;
+  min-height: 17px;
+}
+
