@@ -976,7 +976,15 @@ function showDetails(id){
     <div class="description">
       ${esc(b.description || 'No description available.')}
     </div>
-
+<div class="field">
+  <label>Author</label>
+  <input
+    id="authorField"
+    type="text"
+    value="${esc(b.author || '')}"
+    placeholder="Enter author name"
+  >
+</div>
     <div class="field">
       <label>Where I bought it</label>
       <input
@@ -1049,13 +1057,19 @@ function saveDetails(id){
   let b = books.find(x => x.id === id);
   if(!b) return;
 
+  b.author = $('#authorField').value.trim();
   b.store = $('#storeField').value;
   b.price = $('#priceField').value;
   b.notes = $('#notesField').value;
 
   save();
 
-  alert('Book updated.');
+  showAppNotification(
+    'Book details updated.',
+    'success',
+    2500
+  );
+
   showDetails(id);
 }
 
