@@ -2809,10 +2809,74 @@ async function forgotPassword(){
     );
   }
 }
+async function resetPassword(){
 
+  const password = $('#newPassword').value;
+  const confirmPassword = $('#confirmPassword').value;
+
+  if(!password || !confirmPassword){
+    $('#resetStatus').textContent =
+      'Enter your new password twice.';
+    $('#resetStatus').style.color = '#a33';
+    return;
+  }
+
+  if(password.length < 6){
+    $('#resetStatus').textContent =
+      'Use a password with at least 6 characters.';
+    $('#resetStatus').style.color = '#a33';
+    return;
+  }
+
+  if(password !== confirmPassword){
+    $('#resetStatus').textContent =
+      'The passwords do not match.';
+    $('#resetStatus').style.color = '#a33';
+    return;
+  }
+
+  $('#resetPasswordBtn').disabled = true;
+
+  $('#resetStatus').textContent =
+    'Updating your password…';
+  $('#resetStatus').style.color = '#68727a';
+
+  try{
+
+    const { error } =
+      await supabaseClient.auth.updateUser({
+        password
+      });
+
+    if(error)
+      throw error;
+
+    $('#resetStatus').textContent =
+      'Password changed successfully. You can now sign in.';
+    $('#resetStatus').style.color = '#68727a';
+
+    $('#newPassword').value = '';
+    $('#confirmPassword').value = '';
+
+    setTimeout(() => {
+      showLoginScreen();
+    }, 2000);
+
+  }catch(error){
+
+    $('#resetStatus').textContent =
+      error.message || 'Could not reset your password.';
+    $('#resetStatus').style.color = '#a33';
+
+  }finally{
+
+    $('#resetPasswordBtn').disabled = false;
+  }
+}
 $('#signInBtn').onclick = signIn;
 $('#createAccountBtn').onclick = createAccount;
 $('#forgotPasswordBtn').onclick = forgotPassword;
+$('#resetPasswordBtn').onclick = resetPassword;
 
 $('#signOutBtn').onclick = async () => {
 
@@ -2835,6 +2899,17 @@ document.body.classList.add('auth-locked');
 showLoginScreen();
 
 supabaseClient.auth.onAuthStateChange((event,session) => {
+
+  if(event === 'PASSWORD_RECOVERY'){
+    document.body.classList.remove('auth-locked');
+
+    document.querySelectorAll('.screen')
+      .forEach(x => x.classList.remove('active'));
+
+    $('#resetPassword').classList.add('active');
+
+    return;
+  }
 
   if(session)
     showAppAfterLogin();
