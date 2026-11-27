@@ -2772,8 +2772,47 @@ async function createAccount(){
   }
 }
 
+
+async function forgotPassword(){
+
+  const email = $('#authEmail').value.trim();
+
+  if(!email){
+    showAuthStatus('Enter your email address first.', true);
+    return;
+  }
+
+  showAuthStatus('Sending password reset email…');
+
+  try{
+
+    const { error } =
+      await supabaseClient.auth.resetPasswordForEmail(
+        email,
+        {
+          redirectTo: window.location.origin
+        }
+      );
+
+    if(error)
+      throw error;
+
+    showAuthStatus(
+      'Password reset email sent. Check your email.'
+    );
+
+  }catch(error){
+
+    showAuthStatus(
+      error.message || 'Could not send password reset email.',
+      true
+    );
+  }
+}
+
 $('#signInBtn').onclick = signIn;
 $('#createAccountBtn').onclick = createAccount;
+$('#forgotPasswordBtn').onclick = forgotPassword;
 
 $('#signOutBtn').onclick = async () => {
 
