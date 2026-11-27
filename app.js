@@ -2790,7 +2790,7 @@ async function forgotPassword(){
       await supabaseClient.auth.resetPasswordForEmail(
         email,
         {
-          redirectTo: window.location.origin
+         redirectTo: 'https://shanksvr-bot.github.io/BookShelf-/'
         }
       );
 
