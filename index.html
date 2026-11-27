@@ -43,6 +43,38 @@
   <button id="settingsBtn" class="iconbtn">⚙️</button>
 </header>
 
+
+<!-- PASSWORD RESET SCREEN -->
+<main id="resetPassword" class="screen">
+  <section class="authBox">
+    <div class="heroIcon">🔑</div>
+    <h1>Reset Password</h1>
+    <p>Enter a new password for your BookShelf account.</p>
+
+    <div class="authForm">
+      <input
+        id="newPassword"
+        type="password"
+        autocomplete="new-password"
+        placeholder="New Password"
+      >
+
+      <input
+        id="confirmPassword"
+        type="password"
+        autocomplete="new-password"
+        placeholder="Confirm New Password"
+      >
+
+      <button id="resetPasswordBtn" class="primary big">
+        Reset Password
+      </button>
+
+      <div id="resetStatus" class="authStatus"></div>
+    </div>
+  </section>
+</main>
+  
 <main id="home" class="screen">
   <section class="hero">
     <div class="heroIcon">📚</div>
@@ -277,7 +309,7 @@
 
 <script src="https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=33"></script>
+<script src="app.js?v=34"></script>
 
 </body>
 </html>
